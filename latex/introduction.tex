@@ -1,0 +1,55 @@
+\section{Introduction}\label{sec:intro}
+Along with the widespread  availability of GPS-enabled networked devices, e.g., smartphones,  Spatial Crowdsourcing (SC) has gained significant  attention in both academia and industry~\cite{tong2020spatial, zheng2022privacy, yao2023non, li2023acta, zhao2023preference, zhao2020predictive, Peng2023}. SC involves outsourcing location-based tasks (such as picking up passengers or delivering food and parcels) to individuals (i.e., crowd workers) through SC platforms like Didi and Uber Eats. This process is called \emph{task assignment}.
+
+In a typical SC scenario, tasks must be assigned to crowd workers who are physically present in or near specific locations. The interaction between task requirements and worker availability is reflected in the demand and supply dynamics, describing how task availability and worker availability affect each other. When there are more tasks available than workers to complete them, there is high demand for workers, and vice versa. This interaction affects how tasks are assigned and completed in an SC platform. 
+For instance, in ride-hailing services, a surge in passenger demand in a specific area results in high task demand, often causing a shortage of available drivers. To address this issue, platforms must utilize real-time data to increase the number of drivers nearby in the area. Conversely, during low-demand periods, the platform reallocates drivers to other areas, thereby reducing oversupply. This real-time feedback mechanism optimizes resource allocation and improves service efficiency. Similarly, in food delivery services, peak hours like lunch and dinner times cause a spike in orders and high task demand. During off-peak hours, fewer orders lead to an oversupply of drivers, with some going offline. This interaction shows how manage supply-demand imbalances in real time to ensure timely deliveries and operational efficiency.
+Traditional task assignment methods~\cite{yao2023non, li2023acta, zhao2023preference,zhao2022Profit,zhao2021coalition,li2020group,li2020consensus} that focus on task assignment at the current moment without considering future demand dynamics often struggle to deal with the rapid and unpredictable changes in task demand and worker availability, leading to inefficiencies and suboptimal task assignments over the long term. 
+It is important to accurately predict future task demands and consider worker availability to optimize current assignments. However, it is non-trivial to accurately predict the demands due to uncertain and dynamic spatio-temporal distributions, e.g., tasks might be dispersed over large and possibly uneven geographical areas.
+
+
+Some studies consider task and worker predictions~\cite{9816080, Peng2023,zhao2020predictive,Wang2021Task,li2021preference}. For example, Wei et al.~\cite{9816080} propose a location-and-preference joint prediction model to predict workers' locations and preferences jointly at each time instance. Peng et al.~\cite{Peng2023} introduce a spatio-temporal prediction strategy that combines a gated recurrent unit and a variational autoencoder for crowdsourcing task prediction.
+However, they ignore  the dynamics of task demands, which is crucial for accurately predicting the spatio-temporal distribution of tasks. 
+The closest related research to ours is the work~\cite{zhao2020predictive}, which proposes a Prediction-based Task Assignment (PTA) approach that hybrids different learning models to predict the locations and routes of future workers and employs a graph embedding approach to estimate the distribution of future tasks. 
+Nevertheless, it differs from our work in terms of the problem setting and assignment pattern. Specifically, PTA aims to maximize the number of assigned tasks by 
+assigning a fixed task sequence to each worker, while our work focuses on maximizing the number of assigned tasks by assigning a dynamic task sequence to each worker based on the dynamics of task demands and the availability of workers. 
+In SC, tasks and workers are continuously changing and moving, necessitating real-time updates and processing to ensure the optimal assignment.   
+
+
+This paper investigates the problem of Adaptive Task Assignment (ATA) in SC by focusing on demand dynamics and worker availability. Fig.~\ref{fig:example} illustrates a running example of the ATA problem with three workers denoted as $\{ w_1, w_2, w_3\}$, and nine tasks denoted as $\{s_1, \dots ,s_9 \}$.
+Each worker can only perform tasks within a reachable distance of 1.2 units. 
+In addition, each spatial task, published and expired at different time instances, is labeled with its location where it will be performed only once.
+The straightforward approach, known as Fixed Task Assignment (FTA) algorithm, is to assign each worker a fixed sequence of tasks to be completed in order while satisfying spatial-temporal constraints.
+In our example, we assign the task sequence $(s_1, s_3)$ to $w_1$ and $(s_2, s_4)$ to $w_2$, achieving the maximal number of assigned tasks at time instance 1. Similarly, in the time instance 4, we assign task $s_7$ to $w_3$.
+However, the remaining tasks are rejected because no worker can reach the task locations after completing their assigned task sequences. Consequently, the total number of assigned tasks is 2 + 2 + 1 = 5.
+
+
+\begin{figure}[htbp]
+\vspace{-0.4cm}
+    \centering
+    {\includegraphics[width = 0.5\textwidth ]{fig/run_example.pdf}}
+    \vspace{-0.7cm}
+    \caption{Running Example}
+    \label{fig:example}
+    \vspace{-0.1cm}
+\end{figure}
+
+We show that the ATA problem is NP-hard (see Lemma~\ref{lem:np}). % and thus 
+To solve ATA, we propose an SC framework, namely \textbf{\underline D}emand-based \textbf{\underline A}daptive \textbf{\underline T}ask \textbf{\underline A}ssignment with dynamic \textbf{\underline W}orker \textbf{\underline A}vailability windows (DATA-WA), which adjusts task assignment based on real-time and predicted task demand dynamics as well as dynamic worker availability. For task demand prediction, we employ a multivariate time series learning approach, Dynamic Dependency-based Graph Neural Network, to predict  future task demands across different regions. To the best of our knowledge, our approach is the first to consider the dependency relationships between task demands in different regions.
+For task assignment, we use a Worker Dependency Separation approach based on a graph partition technique. This approach segregates workers into independent clusters arranged in a tree structure based on their locations and availability windows, where worker availability windows refer to the specific time periods during which workers are available to perform tasks. These windows can vary in duration and may include specific start and end times. 
+In the constructed tree structure,
+workers in sibling nodes are independent, thus reducing the search space. During the search process, we utilize a trained Task Value Function to select the optimal task sequence for workers and adaptively adjust current task assignments, minimizing the need for multiple backtracking processes.
+The DATA-WA framework can handle large volumes of data efficiently, especially in urban areas with high densities of tasks. Fig.~\ref{fig:example} illustrates the task assignment results by applying DATA-WA, which assigns eight tasks.
+
+
+Our contributions can be summarized as follows:
+
+1) We identify and study in depth an Adaptive Task Assignment (ATA) problem, considering task demand dynamics and worker availability in the context of SC.
+
+2) We design a multivariate time series learning method, called Dynamic Dependency-based Graph Neural Network, to capture demand dependencies among different regions on future task demand prediction.
+
+3) We design a demand-based adaptive task assignment method considering dynamic worker availability windows to assign tasks.
+
+4) Experimental results demonstrate that our proposed approaches are both effective and efficient when applied to real datasets.
+
+The remainder of this paper is organized as follows. The preliminary concepts and framework overview are introduced in Section~\ref{II}. We then present the task demand prediction and task assignment methodology in Section~\ref{III} and Section~\ref{IV}, respectively, followed by the experimental results in Section~\ref{V}. Section~\ref{VI} surveys the related work, and Section~\ref{VII} concludes this paper.
+

@@ -1,0 +1,173 @@
+\section{Problem Statement}
+\label{II}
+We proceed to present necessary preliminaries, define the problem addressed and then give an overview of our framework. Table~\ref{tab:notation} lists the major notations used throughout the paper.
+
+
+\begin{table}[htbp]
+    \centering
+    \caption{SUMMARY OF NOTATIONS}
+    \vspace{-0.2cm}
+    \begin{tabular}{c|c}
+    \hline
+         Notation& Definition \\ \hline
+         $s$&Spatial task\\ \hline
+         $s.l$& Location of spatial task $s$\\ \hline
+         $s.p$& Publication time of spatial task $s$ \\ \hline
+         $s.e$& Expiration time of spatial task $s$\\ \hline
+         $w$& Available worker \\ \hline
+         $w.l$& Location of worker $w$\\ \hline
+         $w.d$& Reachable distance of worker $w$\\ \hline
+         $w.\mathit{on}$& Online time of worker $w$\\ \hline
+         $w.\mathit{off}$& Departure time of worker $w$\\ \hline
+         $S$&A task set \\ \hline
+         $R(S)$&A task sequence on tasks in $S$ \\ \hline
+         $\mathit{VR}(w)$&A valid scheduled task sequence of worker $w$\\ \hline
+         $T_w$& Availability window of worker $w$\\ \hline
+         $\Delta T$ & Time interval \\ \hline
+         $t(l)$& Arrival time of location $l$\\ \hline
+         $c(a,b)$& Travel time from $a$ to $b$ \\ \hline        
+         $td(a,b)$& Travel distance from $a$ to $b$ \\ \hline
+         $A$& A spatial task assignment\\ \hline
+         $\mathbb{A}$& A spatial task assignment set\\ \hline
+          
+    \end{tabular}
+    
+    \label{tab:notation}
+    \vspace{-0.5cm}
+\end{table}
+
+\subsection{Preliminary}
+
+\begin{definition}[Task]
+    A Task, denoted by $s = (l,p,e)$, has a location $s.l$, a publication time $s.p$, and
+    an expiration time $s.e$. 
+\end{definition}
+
+\begin{definition}[Worker]
+A worker can be in an either online or offline 
+mode. A worker is considered offline when unable to perform tasks, and online when ready to accept tasks.
+An online worker, denoted by $w = (l,d,\mathit{on},\mathit{off})$, consists of a location $w.l$, a reachable distance $w.d$, an online time $w.\mathit{on}$ and an offline time $w.\mathit{off}$.
+\end{definition}
+
+\begin{definition}[Task Sequence]
+Given an online worker $w$ and a set of assigned tasks $S_w$, 
+a task sequence on $S_w$, denoted as $R(S_w)$, represents the order in which $w$ performs the tasks in $S_w$. The arrival time of $w$ at the location of task $s_i\in S_w$ can be calculated in Eq.~\ref{eq:arrTime}.
+    \begin{equation}\label{eq:arrTime}
+t_{R,w}\left(s_i.l\right)= \begin{cases}t_{R,w}\left(s_{i-1}.l\right)+c\left(s_{i-1}.l, s_i.l\right) & i > 1 \\ t_{\mathit{now }}+c\left(w.l, s_i.l\right) & i=1,\end{cases}
+\end{equation}
+    where $t_{R,w}\left(s_i.l\right)$ denoted the arrival time of $w$ at $s_i.l$, $c(a, b)$ denotes the travel time from location $a$ to location $b$, $t_{now}$ is the current time, and $w.l$ denotes the current location of $w$, from which $w$ begins to accept the task assignment.
+    \iffalse
+    \textbf{Task Sequence. }Given a worker $w$, $R_w = (s_1, s_2, ..., s_n)$ represents the sequence of tasks that worker $w$ can complete in a given order. The arrive time of $w$ at task $s_i$ can be computed as follows:
+
+    $$
+    t_w(s_i.l) = 
+    \begin{cases}
+        t_w(s_{i-1}.l) + c(s_{i-1}.l, s_i.l) & i \ne 1\\
+        t_{now} + c(w.l, s_i.l)& i=1
+    \end{cases}
+    $$
+    where $c(a, b)$ denotes the travel time from $a$ to $b$, $t_{now}$ is the current time, and $w.l$ denotes the starting location, from which $w$ begins to accept the task assignment.
+    \fi
+\end{definition}
+
+\begin{definition} [Valid Task Sequence]
+\label{VR}
+A task sequence $R(S_w)$ is called a valid task sequence for a worker $w$, denoted as $\mathit{VR}(S_w)$, if it satisfies the following constraints: 
+
+\begin{enumerate}[i.]
+        \item all the tasks in this sequence can be completed before their expiration times, i.e., $t_{R,w}(s_i.l) < s_i.e$, and 
+        \item all the tasks in this sequence can be completed before the offtime of worker $w$, i.e., $t_{R,w}(s_i.l) < w.\mathit{off}$, and
+       % \item $t(s_i.l) < now + T$ and
+        \item all the tasks in this sequence are located in the reachable range of $w$, i.e., $\mathit{td}(w.l, s_i.l) < w.d$, where $\mathit{td}(a, b)$ is the travel  distance between location $a$ and $b$. 
+    \end{enumerate}
+    \iffalse
+    \textbf{Valid Task Sequence. } Given an online worker $w$ and a set of assigned tasks $S_w$, a task sequence $VSTS(w)$ is called a Valid Scheduled Task Sequence for $w$, if the task sequence $VSTS(w) = (s_1, s_2, ..., s_n)$, such that $\forall s_i \in VSTS(w)$:
+    \begin{enumerate}[i.]
+        \item $t(s_i.l) < s_i.e$ and 
+        \item $t(s_i.l) < w.off$ and
+        \item $t(s_i.l) < now + T$ and
+        \item $d(w.l, s_i.l) < w.r$, where $d(a, b)$ is a given distance between location $a$ and $b$. 
+    \end{enumerate}
+    \fi
+\end{definition}
+
+
+
+\begin{definition}[Spatial Task Assignment]Given a set of workers $W$ and a set of tasks $S$, a spatial task assignment, denoted by $A$, consists of a set of $(w, \mathit{VR}(S_w))$ pairs.
+\end{definition}
+
+In this work, we follow the single task assignment mode~\cite{kazemi2012geocrowd}, where each task can  be completed
+by only one worker, and assume that each worker can perform at most one task at a time, which is practical.  
+Let $A.S$ denote the set of tasks that are assigned to all workers, i.e., $A.S = \cup_{w \in W}\mathit{VR}(S_w)$, and $\mathbb{A}$ denote all possible ways of assignments. Our problem investigated in our paper can be formally stated as follows.
+
+\textbf{Problem Statement.} Given a set of tasks $S$ and a set of workers $W$, 
+our Adaptive Task Assignment (ATA) problem aims to find the global optimal assignment $A_{opt}$, such that $\forall A_i \in \mathbb{A}, |A_i.S|\le |A_{opt}.S|$
+
+
+\begin{lemma}
+\label{lem:np}
+The ATA problem is NP-hard.
+\end{lemma}
+
+\begin{proof}
+\label{prf:np}
+The hardness of the ATA problem can be proved by constructing a polynomial time reduction from the Maximum Coverage (MC) problem and showing that an solution to ATA can be reduced to a solution to MC. 
+
+In the MC problem,
+we are given a collection of sets $\mathbb{B}=$ $\left\{B_1, B_2, \ldots, B_n\right\}$ over a set of objects $O$, where $B_i \subseteq O$, and a positive integer $k$. The MC problem is to find a subset $\mathbb{B}^{\prime} \subseteq \mathbb{B}$ such that $\left|\mathbb{B}^{\prime}\right| \leq k$ and the number of covered elements in $\mathbb{B}^{\prime}$ (i.e., $\left.\left|\cup_{B_i \in \mathbb{B}^{\prime}} B_i\right|\right)$ is maximized.
+
+Consider the following instance of our ATA problem.
+We are given a collection of task sets $\mathbb{VR} = \left\{\mathit{VR}_1, \mathit{VR}_2, \ldots\mathit{VR}_n\right\}$ over a set of tasks $S$, where $\mathit{VR}_i \subseteq S$. We are also give a set of $k$ workers, $W=\left\{w_1, w_2, \ldots, w_k\right\}$. Our ATA problem is to find a subset $\mathbb{VR}^{\prime} \subseteq \mathbb{VR}$ such that $\left|\mathbb{VR}^{\prime}\right| \leq k$ and the number of assigned tasks, i.e., $\left|\cup_{\mathit{VR_i} \in \mathbb{VR}^{\prime}} \mathit{VR_i}\right| $, is maximized.
+ 
+
+Given an instance of the MC problem with a collection of sets $\mathbb{B}=$ $\left\{B_1, B_2, \ldots, B_n\right\}$ and 
+a positive integer $k$, we construct an instance of the ATA problem, where $\mathbb{VR}$, $\mathit{VR}_i$, $S$,  and $\mathbb{VR}^{\prime}$ correspond to $\mathbb{B}$, $\mathit{B}_i$, $O$,  and $\mathbb{B}^{\prime}$ in the original MC instance, respectively.
+Therefore, the instance of the ATA problem can be reduced from the instance of MC.
+
+A solution to the ATA problem would select a subset of workers $W^{\prime}\in W$ ($|W^{\prime}|\le |W|$) and assign them tasks $\mathbb{VR}^{\prime} = \left\{\mathit{VR}^{w_1}, \mathit{VR}^{w_2}, \ldots, \mathit{VR}^{w_{|W^{\prime}|}}\right\}$, where the task assignment maximizes the total assigned tasks.
+This is directly equivalent to finding a subset  $\mathbb{B}^{\prime}\subseteq \mathbb{B}$, with $\left|\mathbb{B}^{\prime}\right| \leq k$, that maximizes the number of covered elements.
+
+If we can solve the ATA problem instance efficiently (i.e.,
+in polynominal time), we can solve a MC problem
+by transforming it to the corresponding ATA problem instance
+and then solve it efficiently. This contradicts the fact that the MC problem is NP-hard~\cite{mc}, and so there cannot be an efficient solution to the ATA problem instance that is then NP-hard. Since the ATA problem instance is NP-hard, the ATA problem is also NP-hard.
+
+% The lemma can be proved through a reduction from the Maximum Coverage (MC) problem that can be described as follows:
+% given a collection of sets $\mathbb{B}=$ $\left\{B_1, B_2, \ldots, B_n\right\}$ over a set of objects $O$, where $B_i \subseteq O$, and a positive integer $k$, the MC problem is to find a subset $\mathbb{B}^{\prime} \subseteq \mathbb{B}$ such that $\left|\mathbb{B}^{\prime}\right| \leq k$ and the number of covered elements by $\mathbb{B}^{\prime}$ (i.e., $\left.\left|\cup_{B_i \in \mathbb{B}^{\prime}} B_i\right|\right)$ is maximized.
+
+% Consider the following instance of the ATA problem.
+% Getting the $\mathit{VR}$ from a given task set $S$ for worker set $W=\left\{w_1, w_2, \ldots, w_n\right\}$, e.g., $\mathbb{S}=$ $\left\{\mathit{VR}(S_{w_1}^1), \mathit{VR}(S_{w_1}^2), \ldots, \mathit{VR}(S_{w_2}^1), \mathit{VR}(S_{w_2}^2), \ldots, \mathit{VR}(S_{w_n}^1),\right.$ $\left. \mathit{VR}(S_{w_n}^2), \ldots\right\}$, our ATA problem is actually to find the subset $\mathbb{S}^{\prime} \in \mathbb{S}$ and the number of covered tasks by $\mathbb{S}^{\prime}$ (e.g., $\left|\cup_{\mathit{VR}(S_{w_i}^j) \in \mathbb{S}^{\prime}} \mathit{VR}(S_{w_i}^j)\right|$) is maximized, where each worker has only one $\mathit{VR}$, e.g., $\mathbb{S}^{\prime}=$ $\left\{\mathit{VR}(S_{w_1}), \mathit{VR}(S_{w_2}), \ldots, \mathit{VR}(S_{w_n})\right\}$. 
+% Therefore, the ATA problem is to select at most $n$ number of $\mathit{VRs}$ from $\mathbb{S}$, such that the total number of tasks is maximum. That is, solving the maximum coverage problem is equal to finding a subset of the $\mathit{VRs}$, $\mathbb{S}^{\prime} \subseteq \mathbb{S}$, where $\left|\mathbb{S}^{\prime}\right|(\leq n)$ maximizes $\left|\cup_{\mathit{VR}(S_{w_i}) \in \mathbb{S}^{\prime}} \mathit{VR}(S_{w_i})\right|$.
+
+% Again, $\mathit{VR}(S_{w_i})$ for each worker $w_i \in W$ corresponds to each set $B_i$ of the MC problem, where each task $s \in S$ corresponds to the object $o \in O$, and the number of workers (i.e., $n$) corresponds to the positive integer $k$ in the MC problem. If we can solve the ATA problem instance efficiently (i.e., in polynomial time), we can solve the MC problem by transforming it to the corresponding ATA problem instance and then solve it efficiently.
+% This contradicts the fact that the MC problem is NP-hard~\cite{mc}, and so there cannot be an efficient solution to the ATA problem instance that is then NP-hard. Since the ATA problem instance is NP-hard, the ATA problem is also NP-hard.
+\end{proof}
+
+\begin{figure*}[htbp]
+\centerline
+{\includegraphics[width = 0.95\textwidth ]{fig/Framework.pdf}}
+\vspace{-0.5cm} 
+\caption{Framework Overview}
+\label{Framework}
+\vspace{-0.5cm}
+\end{figure*}
+
+
+\subsection{Framework Overview}
+We propose a framework, namely \textbf{\underline D}emand-based \textbf{\underline A}daptive \textbf{\underline T}ask \textbf{\underline A}ssignment with dynamic \textbf{\underline W}orker \textbf{\underline A}vailability windows (DATA-WA), to adaptively assign tasks to workers based on demand dynamics.
+We first give an overview of the framework and then provide specifics on each component in the following sections.
+
+The innovation of our proposed framework %is the consideration of the future task's demand dynamics. 
+lies in its consideration of the future task's demand dynamics. 
+It assigns a dynamic task sequence to each worker, updating and processing this sequence in real-time to ensure optimal assignment.
+The main challenges involve accurately predicting the spatio-temporal demand of future tasks and strategically planning assignments for both current and predicted tasks for current workers.
+To address these challenges, we introduce a novel SC framework with two key components: task demand prediction and task assignment, as illustrated in Fig.~\ref{Framework}.
+
+The first component focuses on predicting future task demands using historical data. We consider the dependency relationships of task demands across different regions and employ a multivariate time series learning approach to forecast future demands.
+To model these dependency relationships, we use a demand dependency learning module to estimate a graph adjacency matrix based on historical data. We then develop a \textbf{\underline D}ynamic \textbf{\underline D}ependency-based \textbf{\underline G}raph \textbf{\underline N}eural \textbf{\underline N}etwork (DDGNN) to capture both spatial and temporal dependencies, aiding in predicting the locations and times of tasks.
+
+The second component involves planning a suitable task sequence for each worker in real-time to achieve global optimal task assignments.
+First, in the Worker Dependency Separation phase, we compute the Maximal Valid Task Sequence for all workers and construct a worker dependency graph. We then apply a graph partitioning technique to divide workers into independent clusters, %organizing them 
+which are then organized into a tree structure.
+Next, we perform a depth-first search algorithm to traverse the tree and assign the optimal task sequences for each worker. This data is then used to train a Task Value Function (TVF). 
+Finally, during the adaptive algorithm phase, we use the trained TVF to select the optimal task sequence for all workers and adaptively adjust their task assignments based on changes in supply and demand. This approach minimizes the need for multiple backtracking processes, ensuring a global optimal task assignment. 

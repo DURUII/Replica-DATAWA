@@ -1,0 +1,124 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{enumerate}
+\usepackage[linesnumbered,ruled]{algorithm2e}
+\usepackage{subfigure}
+
+\usepackage{cmap}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{bm}
+\usepackage{marvosym}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+    
+\setlength{\subfigcapskip}{-0.3cm}  % 子图标题和子图之间的垂直距离
+\setlength{\subfigtopskip}{-0.5cm}
+% \setlength{\intextsep}{0.1cm} 
+\pdfoptionpdfminorversion = 6
+
+\begin{document}
+
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proof}{Proof}
+
+\title{DATA-WA: Demand-based Adaptive Task Assignment with Dynamic Worker Availability Windows }
+%\title{Optimizing Task Allocation in Spatial Crowdsourcing through Supply-Demand Dynamics}
+
+%Efficient Task Assignment in Spatial Crowdsourcing: Leveraging Supply-Demand Dynamics for Optimization
+%Enhancing Task Allocation Efficiency in Spatial Crowdsourcing through Supply-Demand Dynamics Optimization
+
+\author{
+\IEEEauthorblockN{Jinwen Chen}
+\IEEEauthorblockA{\textit{University of Electronic Science } \\
+\textit{and Technology of China}\\
+Chengdu, China \\
+202422081316@std.uestc.edu.cn}
+\and
+\IEEEauthorblockN{Jiannan Guo}
+\IEEEauthorblockA{\textit{China Mobile (Suzhou)}\\
+\textit{Software Technology Co., Ltd.} \\
+Suzhou, China \\
+guojiannan@cmss.chinamobile.com}
+\and
+\IEEEauthorblockN{Dazhuo Qiu}
+\IEEEauthorblockA{
+\textit{Department of Computer Science} \\
+\textit{Aalborg University}\\
+Aalborg, Denmark \\
+dazhuoq@cs.aau.dk}\\
+\and
+\IEEEauthorblockN{Yawen Li}
+\IEEEauthorblockA{
+\textit{School of Economics and Management} \\
+\textit{Beijing University of Posts and Telecommunications}\\
+Beijing, China \\
+warmly0716@bupt.edu.cn}\\
+\and
+\IEEEauthorblockN{Yan Zhao}
+\IEEEauthorblockA{
+\textit{Department of Computer Science} \\
+\textit{Aalborg University}\\
+Aalborg, Denmark \\
+yanz@cs.aau.dk}
+\and
+\IEEEauthorblockN{Kai Zheng}
+%\thanks{* Corresponding author: Kai Zheng.}}
+\IEEEauthorblockA{\textit{University of Electronic Science } \\
+\textit{and Technology of China}\\
+Chengdu, China \\
+zhengkai@uestc.edu.cn}
+}
+
+\author{Jinwen~Chen\textsuperscript{1}, Jiannan~Guo\textsuperscript{2}, Dazhuo~Qiu\textsuperscript{3}, 
+Yawen~Li\textsuperscript{4},
+Guanhua~Ye\textsuperscript{4},
+Yan~Zhao\textsuperscript{1,\Letter}, Kai~Zheng\textsuperscript{1,\Letter}
+\\
+\textsuperscript{1}University of Electronic Science and Technology of China, Chengdu, China\\
+\textsuperscript{2}China Mobile (Suzhou)
+Software Technology Co., Ltd.,
+Suzhou, China\\
+\textsuperscript{3}Aalborg University, Aalborg, Denmark\\
+\textsuperscript{4}%School of Economics and Management, 
+Beijing University of Posts and Telecommunications,
+Beijing, China\\
+\thanks{\textsuperscript{\Letter} Corresponding authors: Yan Zhao and Kai Zheng. Yan Zhao is with Shenzhen Institute for Advanced Study, University of Electronic Science and Technology of China. Kai Zheng is with Yangtze Delta Region Institute (Quzhou), and School of Computer Science and Engineering, University of Electronic Science and Technology of China.}
+jinwenc@std.uestc.edu.cn, guojiannan@cmss.chinamobile.com, dazhuoq@cs.aau.dk,\\ warmly0716@bupt.edu.cn, g.ye@bupt.edu.cn, yanz@cs.aau.dk, zhengkai@uestc.edu.cn\\
+}
+
+\maketitle
+
+\begin{abstract}
+With the rapid advancement of mobile networks and the widespread use of mobile devices, spatial crowdsourcing, which involves assigning location-based tasks to mobile workers, has gained significant attention. However, most existing research focuses on task assignment at the current moment, overlooking the fluctuating demand and supply between tasks and workers over time. To address this issue, we introduce an adaptive task assignment problem, which aims to maximize the number of assigned tasks by dynamically adjusting task assignments in response to changing demand and supply. We develop a spatial crowdsourcing framework, namely demand-based adaptive task assignment with dynamic worker availability windows, which consists of two components including task demand prediction and task assignment. In the first component, we construct a graph adjacency matrix representing the demand dependency relationships in different regions and employ a multivariate time series learning approach to predict future task demands. In the task assignment component, we adjust tasks to workers based on these predictions, worker availability windows, and the current task assignments, where each worker has an availability window that indicates the time periods they are available for task assignments. To reduce the search space of task assignments and be efficient, we propose a worker dependency separation approach based on graph partition and a task value function with reinforcement learning. Experiments on real data demonstrate that our proposals are both effective and efficient.
+
+\end{abstract}
+
+\begin{IEEEkeywords}
+task assignment, spatial crowdsourcing, task demand
+\end{IEEEkeywords}
+
+\input{introduction}
+\input{problem_definition}
+\input{task_prediction}
+\input{task_assignment}
+\input{experiment}
+\input{related_work}
+\input{conclusion}
+
+\section{Acknowledgement}
+This work is partially supported by NSFC (No. 62472068),  Shenzhen Municipal Science and Technology R\&D Funding Basic Research Program (JCYJ20210324133607021), and Municipal Government of Quzhou under Grant (No. 2023D044), and Key Laboratory of Data Intelligence and Cognitive Computing, Longhua District, Shenzhen.
+
+\newpage
+\bibliographystyle{IEEEtran}
+\bibliography{ref}
+
+\nocite{wu2020connecting}
+
+\end{document}

@@ -1,0 +1,271 @@
+\section{Experimental Evaluation}
+\label{V}
+In this section, we conduct experiments to evaluate the effectiveness and efficiency of our proposed methods on two real datasets. All the experiments are implemented on an AMD Ryzen 7 CPU 3.20 GHz with 16GB RAM.
+\subsection{Experimental Setup}
+The experiments are conducted using two ride-hailing datasets: Yueche and DiDi\footnote{https://github.com/Yi107/Dataset-for-PCOM}.
+For the Yueche dataset, generated between 9:00 and 11:00 on November 1st, 2016, each worker and task is associated with key information such as location, start time, due time, and the worker's reachable distance. The DiDi dataset has a similar information description akin to the Yueche dataset but covers the period from 21:00 to 23:00 on November 1st, 2016. 
+In both datasets, the driver and passenger matches are used to simulate our problem, where we assume that passengers are tasks and drivers are workers in the SC system since drivers who pick up passengers at different locations may be good candidates to perform spatial tasks in the vicinity of those locations. The locations of workers correspond to where they are informed to pick up passengers. For each passenger, we use the location of the passenger and the time of the pick-up request as the task's location and publication time, respectively.
+We use the data from the preceding hour (i.e., from 8:00 to 9:00 in DiDi dataset and from 20:00 to 23:00 in Yueche dataset) as historical data to train the task demand prediction model.
+Table~\ref{tab:dataset} provides detailed information about these two real datasets, and Table~\ref{tab:experiment_parameters} shows our experimental settings, where the default values of all parameters are underlined.
+
+
+\begin{table}[htbp]
+    \centering
+    \vspace{-0.5cm}
+    \caption{Real datasets}
+    \vspace{-0.2cm}
+    \begin{tabular}{|c|c|c|c|c|}
+    \hline
+        Dataset& $|W|$ & $|S|$  & Time range & Region  \\ \hline
+         Yueche &  624& 11,052  & 9:00 - 11:00& Chengdu \\ \hline
+         DiDi & 760& 8,869  & 21:00 - 23:00 & Chengdu \\ \hline
+    \end{tabular}
+    \vspace{-0.5cm}
+    \label{tab:dataset}
+\end{table}
+
+
+\begin{table}[htbp]
+    \centering
+    \vspace{-0.2cm}
+    \caption{experiment parameters}
+    \vspace{-0.2cm}
+    \begin{tabular}{ll}
+        \hline Parameters & Values \\ \hline
+        Time interval $\Delta T$ (s) &  \underline{5}, 6, 7, 8, 9\\
+        Number of tasks $|S|$ (Yueche) &  7K, 8K, 9K, 10K, \underline{11K}\\
+        Number of tasks $|S|$ (DiDi) &   5K, 6K, 7K, 8K \underline{9K}\\
+        Number of workers $|W|$ (Yueche) & 200, 300, 400, 500, \underline{600}\\
+        Number of workers $|W|$ (DiDi) &  300, 400, 500, 600, \underline{700}\\
+        Reachable distance of workers (km) & 0.05, 0.1, 0.5, \underline{1}, 5 \\
+        Available time of workers $\mathit{off}-\mathit{on}$ (h) & 0.25, 0.5, 0.75, \underline{1}, 1.25 \\
+        Valid time of tasks $e-p$ (s) & 10, 20, 30,  \underline{40}, 50 \\
+        \hline
+    \end{tabular}
+    \vspace{-0.5cm}
+\label{tab:experiment_parameters}
+\end{table}
+
+\subsection{Experimental Results}
+\subsubsection{Performance of Task Demand Prediction}
+We evaluate the performance of the task demand prediction phase and its impact to the subsequent task assignment. We choose $80\%$ location data of workers/tasks for training and $20\%$ for testing.
+
+\textbf{Evaluation Methods.} We study the performance of the following methods.
+
+
+\begin{enumerate}[i.]
+\item LSTM~\cite{lstm}: A Long Short-Term Memory model featuring a fully connected layer and an activation function.
+\item Graph-Wavenet~\cite{wu2019graph}: A spatial-temporal graph convolutional network, which integrates diffusion graph convolutions with 1D dilated convolutions.
+\item DDGNN: Our Dynamic Dependency Graph Neural Network, which is based on multivariate time series learning.
+\end{enumerate}
+
+
+\textbf{Metrics.} To evaluate the accuracy of task demand prediction, we adopt the metric, Average Precision (AP), an important indicator used to measure the overall performance of the predictor at different thresholds. AP is calculated based on Precision and Recall. Precision is the ratio of correctly predicted positive examples (true positives) to all predicted positive examples, denoted by $\mathit{Precision} = \frac{\mathit{TP}}{\mathit{TP}+\mathit{FP}}$, where $\mathit{TP}$ denotes the number of true positives and   $\mathit{FP}$ denotes the number of false positive examples. Recall is the ratio of correctly predicted positive examples to all actual positive examples, % (including false negative examples, False Negative, FN), 
+denoted by $\mathit{Recall}=\frac{\mathit{TP}}{\mathit{TP}+\mathit{FN}}$, where $\mathit{FN}$ denotes the number of false negative examples. To calculate AP, we calculate Precision and Recall at each threshold and then integrate the area under the Precision-Recall curve to get the AP value.
+The accuracy threshold is generated from the range $[0, 1]$ with the initial value $0$ and step $0.01$, which means the threshold is $0, 0.01, 0.02, ..., 1$.
+We also evaluate the efficiency, including the \emph{training} and \emph{testing
+time}.
+
+\begin{figure}[htbp]
+    \centering
+    \vspace{-0.4cm}
+    \setlength{\abovecaptionskip}{-0.1cm}
+    \subfigure[Average Precision]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_AP_yc.pdf}
+		\label{fig:pred_AP_yc}}    
+    \subfigure[Number of Assigned Tasks]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_R_yc.pdf}
+		\label{fig:pred_R_yc}}
+    
+    \subfigure[Training Time]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_train_time_yc.pdf}
+		\label{fig:pred_train_time_yc}}  
+    \subfigure[Testing Time]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_test_time_yc.pdf}
+		\label{fig:pred_test_time_yc}}
+  
+    \caption{Performance of Task Demand Prediction: Effect of $\Delta T$} on Yueche
+    \label{example_time_period_yc}
+    
+\end{figure}
+
+
+\begin{figure}[htbp]
+    \centering
+    \setlength{\abovecaptionskip}{-0.1cm}
+    \vspace{-0.5cm}
+    \subfigure[Average Precision]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_AP_dd.pdf}
+		\label{fig:pred_AP_dd}}    
+    \subfigure[Number of Assigned Tasks]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_R_dd.pdf}
+		\label{fig:pred_R_dd}}
+    
+    \subfigure[Train Time]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_train_time_dd.pdf}
+		\label{fig:pred_train_time_dd}}  
+    \subfigure[Test Time]{\includegraphics[width=0.48 \linewidth]{fig/experiment/pred_test_time_dd.pdf}
+		\label{fig:pred_test_time_dd}}
+  
+    \caption{Performance of Task Demand Prediction: Effect of $\Delta T$} on DiDi
+    \label{example_time_period_dd}
+    \vspace{-0.6cm} 
+\end{figure}
+
+\vspace{-0.3cm}
+\textbf{Effect of $\Delta T$.} In the first set of experiments, we vary the time interval $\Delta T$  and study its effect on task demand prediction. As shown in Figs.~\ref{fig:pred_AP_yc} and~\ref{fig:pred_AP_dd}, the average precision for all approaches shows a similar increasing trend as $\Delta T$ grows.
+Regardless of the time intervals, DDGNN  consistently achieves the highest average precision, followed by Graph-Wavenet and LSTM in both Yueche and DiDi datasets, which demonstrates the superiority of DDGNN for predicting task demand. 
+The task assignment results of all methods are not affected by the time intervals, as shown in Figs.~\ref{fig:pred_R_yc} and~\ref{fig:pred_R_dd}. However, the assignment results heavily depend on the average precision for a specific $\Delta T$, as higher average precision generally correlates with more accurately predicted tasks. DDGNN outperforms all other methods across all values of $\Delta T$, confirming the effectiveness of our proposed algorithm.
+%The task assignment results are not affected by the time interval $\Delta T$, as shown in Figs.~\ref{xx} and~\ref{xxx}. Our DDGNN method performs better than others constantly, showing its superiority.
+% since the location and publication time of the predicted tasks become less precise as $\Delta T$ increases.
+In Figs.~\ref{fig:pred_train_time_yc} and~\ref{fig:pred_train_time_dd}, the training time decreases with longer time interval $\Delta T$, due to the corresponding reduction in training data.
+%as the amount of training data decreases accordingly. 
+Figs.~\ref{fig:pred_test_time_yc} and~\ref{fig:pred_test_time_dd} show that the testing time remains %unaffected by the 
+constant across different time intervals, because the model parameters are fixed.
+
+
+
+\subsubsection{Performance of Task Assignment}
+In this section, we evaluate the effectiveness and efficiency of the task assignment algorithms.
+
+\textbf{Evaluation Methods.} We study the following methods.
+
+\begin{enumerate}[i.]
+    \item Greedy: The Greedy task assignment method that assigns each worker the maximal valid task set from the unassigned tasks until all the tasks are assigned or all the workers are exhausted.
+    \item FTA: The Fixed Task Assignment method that involves assigning each worker %a fixed task sequence that is finished in order 
+    a fixed, predetermined sequence of tasks to be completed in order while satisfying spatio-temporal constraints, which utilizes the worker dependency separation and DFSearch techniques for task assignments.
+    \item DTA: The Dynamic Task Assignment method that dynamically adjusts the task sequence for each worker in real-time according to the spatio-temporal distributions of workers and tasks, without relying on prediction, which also employs the worker dependency separation and DFSearch techniques to refine task assignments.
+    \item DTA+TP: The DTA method that assigns tasks based  on the task demand prediction.
+    \item DATA-WA: The DTA+TP method integrates the task value function (TVF) into task assignment.
+    
+\end{enumerate}
+
+\textbf{Metrics.} 
+Two main metrics are compared for the above methods, i.e.,
+the total number of assigned tasks and CPU time for finding task assignments. Specially, %the number of assigned tasks can measure the quality of task assignment strategies and 
+the CPU time is the average time cost of performing task assignment at each time instance.
+
+\begin{figure}[t]
+    \centering
+    \setlength{\abovecaptionskip}{-0.1cm}
+    \vspace{-0.3cm}
+    \subfigure[Number of Assigned Tasks (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/t_yc_R.pdf}
+		\label{fig:t_yc_R}}    
+    \subfigure[CPU Cost (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/t_yc_cpu.pdf}
+		\label{fig:t_yc_cpu}}
+    
+    \subfigure[Number of Assigned Tasks (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/t_dd_R.pdf}
+		\label{fig:t_dd_R}}  
+    \subfigure[CPU Cost (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/t_dd_cpu.pdf}
+		\label{fig:t_dd_cpu}}
+  
+    \caption{Performance of Task Assignment: Effect of $|S|$}
+    \label{example_t}
+    \vspace{-0.6cm}
+\end{figure}
+
+\textbf{Effect of $|S|$.} To study the scalability of the compared methods, we generate five datasets containing 7,000 to 11,000 tasks by randomly selecting from the Yueche dataset and five datasets containing 5,000 to 9,000 tasks from the DiDi dataset. In Figs.~\ref{fig:t_yc_R} and \ref{fig:t_dd_R}, as $|S|$ increases, %more tasks can be assigned to workers, 
+it is  more likely that each worker will be assigned more tasks, 
+resulting in an increase in the number of assigned tasks across all methods for both the Yueche and DiDi datasets.  %. Thus, the number of assigned tasks of all methods increases in both Yueche and DiDi datasets. 
+DTA+TP outperforms the others, demonstrating the effectiveness of our proposed method. In terms of CPU cost, as shown in Figs.~\ref{fig:t_yc_cpu} and \ref{fig:t_dd_cpu}, the CPU time for DTA, Greedy and FTA remains %almost unaffected by $|S|$. 
+relatively constant regardless of $|S|$.
+However, for the DTA+TP and DATA-WA methods, the CPU time exhibits an increasing trend with $|S|$ due to the need to search more tasks. %since they need to search more tasks. 
+%DATA-WA achieves the approximate number of assigned tasks with DTA+TP and less computation, which demonstrates the effectiveness of the RLSearch.
+DATA-WA achieves a similar number of assigned tasks as DTA+TP with less computation, highlighting the effectiveness of RL-based optimization.
+
+
+\textbf{Effect of $|W|$.} To study the effect of $|W|$, we generate five datasets containing 200 to 600 workers by random selection from the Yueche dataset and five datasets containing 300 to 700 workers from the DiDi dataset. In Figs.~\ref{fig:w_yc_R} and~\ref{fig:w_dd_R}, as $|W|$ increases, more tasks can be assigned to more workers. 
+Thus, the number of assigned tasks of all methods increases in both Yueche and DiDi datasets. DTA+TP results in %the most enormous assigned tasks 
+the highest number of assigned tasks, followed by DATA-WA, DTA, FTA and Greedy. 
+DTA assigns more tasks than FTA since workers can adjust their task sequence when demand and supply change. 
+Although DTA+TP assigns more tasks than DATA-WA, it is more time-consuming than DATA-WA, as shown in 
+%In terms of running time, as shown in 
+Figs.~\ref{fig:w_yc_cpu} and~\ref{fig:w_dd_cpu}.
+The CPU time of DATA-WA is only $42.4\%$--$65.7\%$ of that of DTA+TP.
+Greedy is the fastest algorithm and is almost unaffected by $|W|$, but it assigns the fewest tasks. 
+Although Greedy and FTA are more efficient than our proposed approaches, they assign fewer tasks. DATA-WA achieves the best balance between task assignment and computational cost compared to other methods.
+
+\begin{figure}[t]
+    \setlength{\abovecaptionskip}{-0.1cm}
+    \centering
+    \vspace{-0.5cm}
+    \subfigure[Number~of Assigned Tasks (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/w_yc_R.pdf}
+		\label{fig:w_yc_R}}    
+    \subfigure[CPU Cost (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/w_yc_cpu.pdf}
+		\label{fig:w_yc_cpu}}
+    
+    
+    \subfigure[Number of Assigned Tasks (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/w_dd_R.pdf}
+		\label{fig:w_dd_R}}  
+    \subfigure[CPU Cost (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/w_dd_cpu.pdf}
+		\label{fig:w_dd_cpu}}
+  
+    \caption{Performance of Task Assignment: Effect of $|W|$}
+    \label{example_w}
+    \vspace{-0.6cm}
+\end{figure}
+
+\textbf{Effect of $d$.} We also study the effect of workers’ reachable distance $d$. As shown in Figs.~\ref{fig:dis_yc_R} and \ref{fig:dis_dd_R}, the numbers of assigned tasks generated by all methods have a growing tendency as $d$ increases. This is due to the fact that workers with larger reachable distances %tend to
+have more available task assignments.
+However, we also notice that the effect of $d$ becomes less significant on all methods when $d$ is greater than or equal to 0.5 km, % i.e., all methods remain unaffected after $d$ exceeds 0.5 km.
+indicating that the methods remain unaffected beyond this threshold.
+In addition, when $d$ exceeds 0.5 km, DTA+TP and DATA-WA outperform the others, demonstrating the effectiveness of our proposed algorithms again.
+In  Figs.~\ref{fig:dis_yc_cpu} and \ref{fig:dis_dd_cpu}, the CPU cost of all approaches increases with larger reachable distances. This is because that the number of available tasks to be assigned in a given time instance grows when $d$ gets larger, leading to longer computational cost.
+\begin{figure}[t]
+    \centering
+    \setlength{\abovecaptionskip}{-0.1cm}
+    \subfigure[Number of Assigned Tasks (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dis_yc_R.pdf}
+		\label{fig:dis_yc_R}}    
+    \subfigure[CPU Cost (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dis_yc_cpu.pdf}
+		\label{fig:dis_yc_cpu}}
+    
+    
+    \subfigure[Number of Assigned Tasks (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dis_dd_R.pdf}
+		\label{fig:dis_dd_R}}  
+    \subfigure[CPU Cost (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dis_dd_cpu.pdf}
+		\label{fig:dis_dd_cpu}}
+     \caption{Performance of Task Assignment: Effect of $d$}
+    \label{example_d}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \vspace{-0.5cm} 
+    \setlength{\abovecaptionskip}{-0.1cm}
+    \subfigure[Number of Assigned Tasks (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/wd_yc_R.pdf}
+		\label{fig:wd_yc_R}}    
+    \subfigure[CPU Cost (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/wd_yc_cpu.pdf}
+		\label{fig:wd_yc_cpu}}
+    
+    
+    \subfigure[Number of Assigned Tasks (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/wd_dd_R.pdf}
+		\label{fig:wd_dd_R}}  
+    \subfigure[CPU Cost (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/wd_dd_cpu.pdf}
+		\label{fig:wd_dd_cpu}}
+  
+    \caption{Performance of Task Assignment: Effect of $\mathit{off} - \mathit{on}$}
+    \label{example_wd}
+    \vspace{-0.8cm} 
+\end{figure}
+
+\textbf{Effect of $\mathit{off}-\mathit{on}$.} We further evaluate the effect of workers' available time. As shown in Figs.~\ref{fig:wd_yc_R} and \ref{fig:wd_dd_R}, the number of assigned tasks of all methods gradually increases as the available time of workers increases. This is because that more workers are available for each task. %the number of available workers corresponding to each task also increases. 
+DTA+TP and DATA-WA achieve similar numbers of assigned tasks, %while the CPU time by DATA-WA is significantly lower than that of DTA+TP (see 
+but DATA-WA has significantly lower CPU time compared to DTA+TP, as shown in 
+Figs.~\ref{fig:wd_yc_cpu} and \ref{fig:wd_dd_cpu}. %This is because the task value function reduces the multiple backtracking processes. 
+This reduction in CPU time is due to the task value function minimizing multiple backtracking processes. In addition, the CPU time for all methods gradually increases since the number of available workers for each task increases, resulting in a more extensive search space. 
+
+\textbf{Effect of $e-p$.} We then analyze the impact of the valid time $e-p$ of tasks. As shown in Figs.~\ref{fig:dead_yc_R} and~\ref{fig:dead_dd_R}, the number of assigned tasks increases across all methods as the valid time extends. This is because tasks have a higher probability of being assigned to suitable workers when they have more valid time. Similar to the previous results, our proposed DTA+TP and DATA-WA outperform the others, which confirms the superiority of our proposals. In Figs.~\ref{fig:dead_yc_cpu} and~\ref{fig:dead_dd_cpu}, the CPU times for all approaches increase with longer task valid times, due to the higher number of worker-task assignments.
+
+\begin{figure}[t]
+    \centering
+    \setlength{\abovecaptionskip}{-0.1cm}
+    \vspace{-0.4cm}
+    
+    \subfigure[Number of Assigned Tasks (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dead_yc_R.pdf}
+		\label{fig:dead_yc_R}}    
+    \subfigure[CPU Cost (Yueche)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dead_yc_cpu.pdf}
+		\label{fig:dead_yc_cpu}}
+    
+    
+    \subfigure[Number of Assigned Tasks (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dead_dd_R.pdf}
+		\label{fig:dead_dd_R}}  
+    \subfigure[CPU Cost (DiDi)]{\includegraphics[width=0.48 \linewidth]{fig/experiment/dead_dd_cpu.pdf}
+		\label{fig:dead_dd_cpu}}
+  
+    \caption{Performance of Task Assignment: Effect of $e-p$}
+    \label{example_dd}
+    \vspace{-0.8cm}
+\end{figure}

@@ -1,0 +1,193 @@
+\section{Task Demand Prediction}
+\label{III}
+Predicting future dynamic task demands is crucial for dynamically adjusting the task sequence for workers to achieve optimal task assignments. We approach task prediction using a grid-based method by partitioning the study area into disjoint and uniform grids. Each grid represents a specific type of area, such as schools, shopping malls, or food streets, thereby reflecting real-world scenarios.
+The historical task data from multiple grid cells can be treated as a multivariate time series, which will be detailed in the following preliminaries. Predicting this multivariate time series is essentially equivalent to addressing the task demand prediction problem. To address this, we propose a two-module method to predict future task demands across different regions. 
+As shown in Fig.~\ref{Framework}, the proposed method consists of a Demand Dependency Learning Module and a Dynamic Dependency-based Graph Neural Network (DDGNN), which work together to predict task demands based on the spatio-temporal distribution of tasks. 
+In the following sections, we first give some preliminaries and then detail the two modules. 
+
+\subsection{Preliminaries}
+
+%{\color{brown}{
+\textbf{Task Multivariate Time Series.} Unlike models such as LSTM~\cite{lstm} that only consider one variable, multivariate time series incorporates multiple variables at each time step~\cite{cui2021metro, deng2025million, chen2021daemon}. Deriving from the multivariate approach, we propose the Task Multivariate Time Series for multiple grids. In each grid cell $i\in \{1,\ldots,M\}$, we define a multivariate time series: $\boldsymbol{C}_i = \langle \boldsymbol{c}^{t_0}_i, \boldsymbol{c}^{t_0+k\Delta T}_i,\ldots,\boldsymbol{c}^{t_0+(P-1)k\Delta T}_i\rangle$ (we use bold letters $\boldsymbol{C}$ and $\boldsymbol{c}$ to denotes vectors). It consists of a sequence of vectors $\boldsymbol{c}$ in increasing time order (starting from time $t_0$), with each vector having $k$ (user-specified, and $k>1$) dimensions. 
+Each dimension corresponds to the task occurrence in a specific time interval $\Delta T$, and a binary value (1 for yes, 0 for no) is assigned to each dimension based on whether tasks occur during this time interval. 
+For example, $\boldsymbol{c}^{t_0+(P-1)k\Delta T}_i$ has $k$ dimensions, which shows the task occurrence during the time interval from $t_0+(P-1)k\Delta T$ to $t_0+Pk\Delta T$, with each dimension denoting the task occurrence in $\Delta T$.
+Given a task set $S$ that occur in cell $i$ during time interval $[t_0, t_0+Pk\Delta T]$ ($t_0+Pk\Delta T$ is the right time boundary of vector $\boldsymbol{c}_i^{t_0+(P-1)k\Delta T}$), the binary value of $j$ dimension $(j \in {1,\ldots,k})$ of vector $\boldsymbol{c}_i^{t}[j]$ $(t \in \{t_0, t_0+k\Delta T, \ldots, t_0+(P-1)k\Delta T\})$ is defined in Eq.~\ref{eq:Grid1}. 
+\begin{equation}\label{eq:Grid1}
+\boldsymbol{c}_i^{t}[j]=
+\begin{cases}
+1   & \exists s \in S;  t+(j-1)\Delta T \leq s.p < t+j\Delta T \\
+0   & otherwise\\
+\end{cases}
+\end{equation}
+Then for each vector in the task multivariate time series, it covers $k\Delta T$ time intervals. Based on $P$ historical record vectors in $\boldsymbol{C}_i$, our goal is to predict the next vector during time interval from $t_0+Pk\Delta T$ to $t_0+(P+1)k\Delta T$, i.e., $\boldsymbol{c}_i^{t_0+Pk\Delta T}$. 
+
+For example, as shown in Fig.~\ref{exampleC}, we set $k=3$, which indicates that we consider three time intervals $3\Delta T$ for each vector $\boldsymbol{c}$. 
+Specifically, between $t_0$ and $t_0 + \Delta T$, there are tasks published in grid $i$, %thus the value of the first dimension of the first vector is $1$
+resulting in the first dimension of the first vector being $1$. Similarly, for the second dimension in the first vector, tasks are published between $t_0 + \Delta T$ and $t_0 + 2\Delta T$, %there are published tasks, resulting in a value $1$ as well.
+so this value is also $1$.
+However, in the third dimension of the first vector, no tasks are published, yielding a value of $0$. Therefore, the time series is represented as a vector $\boldsymbol{c} = \langle 1, 1, 0\rangle$, reflecting the presence of tasks across these three time intervals.
+
+
+\begin{figure}[htbp]
+\vspace{-0.4cm}
+\centerline
+{\includegraphics[width = 0.48\textwidth ]{fig/exampleC.pdf}}
+\vspace{-0.3cm}
+\caption{Example of Task Multivariate Time Series ($k=3$)}
+\label{exampleC}
+\vspace{-0.3cm}
+\end{figure}
+
+
+% \textcolor{blue}{
+% \textbf{Multivariate Time Series and Task Multivariate Time Series.}
+% % Given a time period $T$ and a set of tasks $S_i^t$ published in the $i^{th}$ cell within the time interval from $t$ to $t+T$, a Grid Cell Task, denoted by $C_i^t \in \textbf{R}^D$, is expressed by Eq.~\ref{eq:Grid}.
+% % A multivariate time series is a time-ordered sequence of vectors, each vector representing an observation at a specific time instance. In spatial crowdsourcing, we define task multivariate time series for historical $P$ time instances as $\boldsymbol{X} = \langle \boldsymbol{C}^{t_1}, \boldsymbol{C}^{t_2},...,\boldsymbol{C}^{t_P}\rangle$,   
+% %and our goal is to predict the %next-step-away value of $Y = \{C^{t_{p+1}} \}$
+% %vector $\boldsymbol{C}^{t_{P+1}}$ at time instance $P+1$, where $\boldsymbol{C}^t \in \textbf{R}^{N \times D}$ denotes the value of a multivariate variable at time instance $t$, $N$ denotes the number of grid cells, and $D$ denotes the feature dimension.
+% % $\boldsymbol{C}_i = \langle \boldsymbol{c}^{t}_i, \boldsymbol{c}^{t+k\times \Delta T}_i,...,\boldsymbol{c}^{t+P\times k \times \Delta T}_i\rangle$,
+% A multivariate time series is a time-ordered sequence of vectors, each vector representing an observation at a specific time instance. We define a $k$-dimensional ($k>1$) task multivariate time series for historical $P$ time instances in the $i^{th}$ cell as a sequence of $k$-dimensional ($k>1$) vectors, $\boldsymbol{C}_i = \langle \boldsymbol{c}^{t_1}_i, \boldsymbol{c}^{t_2}_i,...,\boldsymbol{c}^{t_P}_i\rangle$,  
+% and our goal is to predict the %next-step-away value of $Y = \{C^{t_{p+1}} \}$
+% vector $\boldsymbol{c}_i^{t_{P+1}}$ at time instance $P+1$, where $\boldsymbol{c}_i^t \in \textbf{R}^{k}$ denotes a $k$-dimensional vector that describes an observation at time instance $t$.} %, $N$ denotes the number of grid cells, and $D$ denotes the feature dimension.
+
+% \textcolor{red}{
+% We use bold letters, e.g., $\boldsymbol{C}$ and $\boldsymbol{c}$, to denote vectors. Given a time period $\Delta T$ and a set of historical tasks, $S_i^t$, published in the $i^{th}$ cell within the time interval from $t$ to $t+k \times \Delta T$, $\boldsymbol{c}^t_i[j]$ denoting the $j^{th}$ ($1 \leq j \leq k$) feature value of $\boldsymbol{c}^t_i$, can be expressed by Eq.~\ref{eq:Grid}.
+% \begin{equation}\label{eq:Grid}
+% \boldsymbol{c}^t_i[j]=
+% \begin{cases}
+% 1   & \exists s_z \in S_i^t, (j-1) \times \Delta T \leq s_z.p-t< j \times \Delta T  \\
+% 0   & others\\
+% \end{cases}
+% \end{equation}
+% }
+
+% \textcolor{red}{
+% For example, as shown in Fig.~\ref{exampleC}, the dimension $k=3$ indicates that we consider three time periods. Specifically, there is one task published from $t$ to $t + \Delta T$, resulting in a state of 1. Similarly, from $t + \Delta T$ to $t + 2\Delta T$, another task is published, maintaining the state at 1. However, from  $t + 2\Delta T$ to $t + 3\Delta T$, no task is published, leading to a state of 0. Therefore, the time series is represented as $\boldsymbol{c}_i^t = \langle 1, 1, 0\rangle$, reflecting the presence of tasks in these three time periods.
+% }
+%{\color{brown}{
+%\begin{definition}[Grid Graph]
+\textbf{Grid Graph.}
+    A grid graph is denoted as $G=(V, E)$, where $V$ is a set of nodes representing grid cells, and $E$ is a set of edges representing the task demand dependencies between these cells. An edge $e_{ij} = (v_i, v_j)$ exists if the task demands in grid cells $v_i$ and $v_j$ affect each other. Specifically, if an increase in task demands in one grid cell (e.g., a region in a city) leads to a change in task demands in another grid cell after some time, it indicates a strong dependency between these cells, and they are connected in the grid graph. For simplicity, we refer to grid graph as graph when the context is clear. 
+%\end{definition}
+%}}
+
+%{\color{brown}{
+%\begin{definition}[
+\textbf{Graph Adjacency Matrix.}
+    The adjacency Matrix at time instance $t$ is denoted by $\mathcal{A}^t \in \textbf{R}^{M \times M}$,
+    where $M$ is the number of nodes (grid cells) in graph $G$. For any two nodes $v_i$ and $v_j$,  $\mathcal{A}^t_{ij}=1$ if $(v_i, v_j) \in E$; $\mathcal{A}^t_{ij}=0$ if $(v_i, v_j) \notin E$.
+%\end{definition}
+%}}
+ 
+% \begin{definition}[Graph]
+%     A graph is formulated as $G=(V, E)$, where $V$ is the set of nodes, with each node 
+%     corresponding to a grid cell, and $E$ is the set of edges, indicating the task dependency between connected grid cells, {\color{red}{i.e., an edge $(v_i, v_j)$ exists if the task demands in connected grid cells, $v_i$ and $v_j$, affect each other.}}
+% \end{definition}
+
+% {\color{red}{
+% For example, a task demand increase in one region causes an increase in another sometime later. We say that $v_i$ and $v_j$ affect each other and an edge exists between them. }}
+
+% \begin{definition}[Neighbor Nodes]
+%     Given a graph $G=(V, E)$, where $(v_i, v_j) \in E$ denotes the edge between nodes $v_i$ and $v_j$, the neighbor nodes of $v_i$ %is
+%     are denoted by $N(v_i) = \{v_j|(v_i,v_j)\in E\}$.
+% \end{definition}
+
+% \begin{definition}[Graph Adjacency Metric]
+%     The adjacency metric at time instance $t$ is denoted by $\mathcal{A}^t \in \textbf{R}^{N \times N}$,
+%     where $N$ represents the number of nodes in  graph $G$. For any two nodes $v_i$ and $v_j$,  $\mathcal{A}^t_{ij}>0$ if $(v_i, v_j) \in E$, $\mathcal{A}^t_{ij}=0$ if $(v_i, v_j) \notin E$.
+% \end{definition}
+
+
+%\begin{definition}[
+\textbf{Dilated Causal Convolution.}
+Dilated Causal Convolution~\cite{wu2020connecting} effectively captures a node’s temporal trends by allowing an exponentially large receptive field as layer depth increases. It handles long-range sequences efficiently in a non-recursive manner. 
+Specifically, given a sequence input $x = \{x_1,x_2,\ldots,x_J\}$ and a filter function $f(\cdot) \in \textbf{R}^K$ ($K$ is the dimension of filter that is set to $3$ in our work), the output of dilated causal convolution operation of $x$ with $f(\cdot)$ at step $j$ is represented as follows:
+\begin{equation}
+y_j = \sum_{i=0}^{K-1}{f(i)\cdot x_{j-i \cdot d}},
+\end{equation}
+where $d$ is the dilation factor that controls the skipping distance.
+%\end{definition}
+
+
+% {\color{red}{ 
+% Dilated Causal Convolution has achieved success in capturing a node’s temporal trends, which allows an exponentially large receptive field by increasing the layer depth and handles long range sequences properly in a non-recursive manner. Here, we give the definition of Dilated Causal Convolution.
+
+% \begin{definition}[Dilated Causal Convolution]
+% Given a $y$-dimensional sequence input $x \in \textbf{R}^{y}$ and a filter function $f(\cdot) \in \textbf{R}^K$ ($K$ is the dimension of filter, set to $K=3$ in our work), the dilated causal convolution operation of $x$ with $f(\cdot)$ at step $j$ is represented as follows:
+% \begin{equation}
+% x \ast f(j) = \sum_{i=0}^{K-1}{f(i)x(j-i \times d)},
+% \end{equation}
+% where $d$ is the dilation factor that controls the skipping distance.
+% \end{definition}
+% }}
+
+\subsection{Demand Dependency Learning Module.}
+%{\color{brown}{
+Tasks across different regions are interconnected, meaning that changes in task demands in one area can affect those in others. For instance, in a city, when university classes end, students often head to a nearby restaurant district, causing an initial surge in ride requests from the university. Later, when the students finish dining and socializing, they request rides home, leading to increased demand in the restaurant district. This example illustrates how rising demand in one region can subsequently impact another.
+
+Graph-based methods for capturing relationships between different observations have become prevalent in multivariate time series prediction \cite{wu2020connecting, wu2019graph}. In this paper, we propose a dynamic time-based adjacency matrix, $\mathcal{A}^t$, to represent the dependencies of task demands across different regions at each time instance $t$. We develop a demand dependency learning module that learns the graph adjacency matrix through end-to-end learning using stochastic gradient descent.
+%}}
+
+
+% {\color{red}{ 
+% Tasks across different regions are interconnected, 
+% %and changes in task demands in one region may affect those in other regions. %(e.g., )
+% meaning that shifts in task demands in one region can affect those in other regions.
+% For example, in a city, after classes end at a university, students often take rides to a nearby restaurant district. This causes an initial surge in ride requests in the university. Later, when students finish dining and socializing, they request rides home, leading to a surge in the restaurant district. This demonstrates how increased demand in one region can affect another later.
+
+% The use of graphs to describe relationships between different observations has %been widely adopted for 
+% become prevalent for multivariate time series prediction\cite{wu2020connecting, wu2019graph}. 
+% In our paper, we propose a dynamic time-based adjacency matrix, denoted as $\mathcal{A}^t$, to represent the dependencies of task demands  across different regions at time instance $t$. We also construct a graph learning layer that learns a graph adjacency matrix through end-to-end learning with stochastic gradient descent.
+% }}
+%{\color{red}{ 
+First, we initialize two node embedding features (i.e., $\mathbb{M}_1$ and $\mathbb{M}_2$) with neural networks from historical task data $\mathbb{C}^t = \{\boldsymbol{c}_1^t, \boldsymbol{c}_{2}^t,..., \boldsymbol{c}_M^t\}$ at time instance $t$, where $\boldsymbol{c}_i^t$ denotes the encoding feature of $i^{th}$ cell at time instance $t$ and $M$ is the number of grid cells, as illustrated below:
+\begin{equation}
+\label{eq:M1}
+\mathbb{M}_1 = F_{\theta_1}(\mathbb{C}^{t})
+\end{equation}
+\begin{equation}
+\label{eq:M2}
+\mathbb{M}_2 = F_{\theta_2}(\mathbb{C}^{t}),
+\end{equation}
+where $F_{\theta}$ is a neural network (e.g., fully connected layer) with parameters $\theta$. 
+
+Second, we designate $\mathbb{M}_1$ as the source node embedding and $\mathbb{M}_2$ as the target node embedding. By multiplying $\mathbb{M}_1$ and $\mathbb{M}_2$, we calculate the spatial dependency weights between the source nodes and the target nodes in Eq.~\ref{eq:A}.
+\begin{equation}
+\label{eq:A}
+\mathcal{A}^{t} = SoftMax(tanh(\mathbb{M}_1\mathbb{M}_2^T+\mathbb{M}_2\mathbb{M}_1^T)),
+\end{equation}
+where the tanh activation function maps the results to a range between $-1$ and $1$, and the SoftMax activation function is applied to normalize the adjacency matrix.
+%}}
+\begin{figure}[htbp]
+\vspace{-0.5cm} 
+\centerline
+{\includegraphics[width = 0.35\textwidth ]{fig/DDGNN.pdf}}
+\vspace{-0.5cm} 
+\caption{DDGNN Overview}
+\label{fig2}
+\vspace{-0.5cm} 
+\end{figure}
+
+\subsection{Dynamic Dependency Graph Neural Network}
+
+Dilated causal convolution has proven effective in capturing temporal trends~\cite{wu2020connecting, quan2023detection}.
+In our proposed Dynamic Dependency-based Graph Neural Network (DDGNN) model, we employ dilated causal convolution to identify the temporal dependencies. Then, we utilize a graph propagation approach to integrate a node's information with that of its neighbors, thereby addressing task demand dependencies within the graph, as illustrated in Fig~\ref{fig2}.
+
+Gating mechanisms are crucial in multivariate time series forecasting as they regulate the information flow within the dilated causal convolution network. We utilize dilated causal convolution to identify the temporal dependencies in cell $i$, as represented by Eq.~\ref{eq:gating}.
+\begin{equation} 
+\label{eq:gating}
+Z_i = tanh(\theta_1\boldsymbol{C}_i, b_1) \odot \sigma(\theta_2\boldsymbol{C}_i, b_2),
+\end{equation}
+where $\theta_1$, $\theta_2$, $b_1$, and $b_2$ are dilated causal convolution parameters, $\odot$ is the element-wise product, $tanh( \cdot )$ is the activation function, and $\sigma(\cdot)$ is the sigmoid function that determines the proportion of information flow to the next layer.
+
+Next, we use Approximate Personalized Propagation of Neural Predictions (APPNP)~\cite{appnp} as the propagation layer to extract a node's feature by aggregating and transforming its neighborhood information. The propagation step is defined as follows:
+\begin{equation}
+\mathbb{Z}^{(h+1)}_t = \alpha \mathbb{Z}^{(0)}_t + (1-\alpha)\hat{\mathcal{A}}^t\mathbb{Z}^{(h)}_t
+\end{equation}
+\begin{equation}
+\mathbb{Z}^{(H)}_t = ReLU(\alpha \mathbb{Z}^{(0)}_t + (1-\alpha)\hat{\mathcal{A}}^t\mathbb{Z}^{(h-1)}_t),
+\end{equation}
+where $\mathbb{Z}^{(0)}_t \in \textbf{R}^{M \times k}$ represents the input hidden states at time instance $t$ output by the previous layer, and $\mathbb{Z}^{(H)}_t$ are the output feature by propagation. The $\hat{\mathcal{A}}^t = \hat{D}^{-1/2}(\mathcal{A}^t+I)\hat{D}^{-1/2}$ is the normalized adjacency matrix, where $\hat{D}$ is the diagonal degree matrix $\hat{D}_{ii} = 1 + \sum_j{\mathcal{A}^t_{ij}}$, $\alpha$ is a hyper-parameter for controlling the restart probability, and $H$ defines the number of power iteration steps and $h \in [0, H - 2]$.
+
+After applying the DDGNN approach, we obtain the vector $\boldsymbol{c}_i^{t_0+pk\Delta T}$ for the $i^{th}$ cell.
+If $\boldsymbol{c}^{t_0+pk\Delta T}_i[j]$ exceeds a given threshold (i.e, 0.85 in our experiments), we predict that a task will be published in the $i^{th}$ cell during the time interval from $t_0+pk\Delta T$ to $t_0+(p+1)k\Delta T$. Both predicted and current tasks are considered in the next task assignment process.
