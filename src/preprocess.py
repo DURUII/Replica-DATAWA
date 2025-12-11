@@ -15,27 +15,14 @@ class Preprocessor:
     def get_grid_index(self, lat, lng, min_lat, min_lng, lat_steps, lng_steps):
         lat_idx = int((lat - min_lat) / self.grid_size)
         lng_idx = int((lng - min_lng) / self.grid_size)
-        lat_idx = min(lat_idx, lat_steps - 1)
-        lng_idx = min(lng_idx, lng_steps - 1)
+        lat_idx = max(0, min(lat_idx, lat_steps - 1))
+        lng_idx = max(0, min(lng_idx, lng_steps - 1))
         return lat_idx, lng_idx
 
     def process(self, worker_file, request_file, start_hour_utc, end_hour_utc, date_str):
         # Load data
         workers = self.loader.load_workers(worker_file)
         requests = self.loader.load_requests(request_file)
-
-        # Define bounds (fixed or dynamic)
-        # For consistency, let's use dynamic bounds from the data
-        lats = [w['lat'] for w in workers] + [r['lat_app'] for r in requests]
-        lngs = [w['lng'] for w in workers] + [r['lng_app'] for r in requests]
-        min_lat, max_lat = min(lats), max(lats)
-        min_lng, max_lng = min(lngs), max(lngs)
-        
-        lat_steps = int(np.ceil((max_lat - min_lat) / self.grid_size))
-        lng_steps = int(np.ceil((max_lng - min_lng) / self.grid_size))
-        num_grids = lat_steps * lng_steps
-        
-        print(f"Grid: {lat_steps}x{lng_steps} = {num_grids} cells")
 
         # Time filtering
         # date_str format: 'YYYY-MM-DD'
@@ -47,6 +34,23 @@ class Preprocessor:
         
         filtered_requests = [r for r in requests if start_ts <= r['appearance_time'] < end_ts]
         print(f"Filtered requests: {len(filtered_requests)} out of {len(requests)}")
+        
+        filtered_workers = [w for w in workers if start_ts <= w['appearance_time'] < end_ts]
+        print(f"Filtered workers: {len(filtered_workers)} out of {len(workers)}")
+
+        # Define bounds using filtered requests only
+        if len(filtered_requests) == 0:
+            lats = [r['lat_app'] for r in requests]
+            lngs = [r['lng_app'] for r in requests]
+        else:
+            lats = [r['lat_app'] for r in filtered_requests]
+            lngs = [r['lng_app'] for r in filtered_requests]
+        min_lat, max_lat = min(lats), max(lats)
+        min_lng, max_lng = min(lngs), max(lngs)
+        lat_steps = max(1, int(np.ceil((max_lat - min_lat) / self.grid_size)))
+        lng_steps = max(1, int(np.ceil((max_lng - min_lng) / self.grid_size)))
+        num_grids = lat_steps * lng_steps
+        print(f"Grid: {lat_steps}x{lng_steps} = {num_grids} cells")
 
         # Create time series
         # Total duration
@@ -55,6 +59,8 @@ class Preprocessor:
         
         # Matrix C: (Num_Vectors, Num_Grids, k)
         C = np.zeros((num_vectors, num_grids, self.k), dtype=int)
+        # Matrix S: (Num_Vectors, Num_Grids, k) - Supply
+        S = np.zeros((num_vectors, num_grids, self.k), dtype=int)
         
         for r in filtered_requests:
             t = r['appearance_time'] - start_ts
@@ -79,8 +85,26 @@ class Preprocessor:
             
             C[vec_idx, grid_idx, dim_idx] = 1
 
+        for w in filtered_workers:
+            t = w['appearance_time'] - start_ts
+            if t < 0 or t >= duration:
+                continue
+                
+            vec_idx = int(t / (self.k * self.delta_t))
+            if vec_idx >= num_vectors:
+                continue
+                
+            time_in_vec = t - vec_idx * (self.k * self.delta_t)
+            dim_idx = int(time_in_vec / self.delta_t)
+            
+            lat_idx, lng_idx = self.get_grid_index(w['lat'], w['lng'], min_lat, min_lng, lat_steps, lng_steps)
+            grid_idx = lat_idx * lng_steps + lng_idx
+            
+            S[vec_idx, grid_idx, dim_idx] += 1
+
         return {
             'C': C,
+            'S': S,
             'min_lat': min_lat,
             'min_lng': min_lng,
             'lat_steps': lat_steps,

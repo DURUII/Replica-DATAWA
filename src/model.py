@@ -7,26 +7,24 @@ class DemandDependencyLearning(nn.Module):
         super(DemandDependencyLearning, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(input_dim, hidden_dim)
+        self.node_emb1 = nn.Parameter(torch.randn(num_nodes, hidden_dim))
+        self.node_emb2 = nn.Parameter(torch.randn(num_nodes, hidden_dim))
         self.num_nodes = num_nodes
+        self.act = nn.ELU()
+        self.dropout = nn.Dropout(0.2)
+        self.temperature = 0.7
 
     def forward(self, x):
         # x: (Batch, Num_Nodes, Input_Dim)
-        # We want to learn A based on the features at the current time step?
-        # Or is A learned globally?
-        # The paper says "dynamic time-based adjacency matrix A^t".
-        # So it depends on x.
         
-        m1 = self.fc1(x) # (Batch, Num_Nodes, Hidden)
-        m2 = self.fc2(x) # (Batch, Num_Nodes, Hidden)
+        m1 = self.dropout(self.act(self.fc1(x))) + self.node_emb1.unsqueeze(0) # (Batch, Num_Nodes, Hidden)
+        m2 = self.dropout(self.act(self.fc2(x))) + self.node_emb2.unsqueeze(0) # (Batch, Num_Nodes, Hidden)
         
         # A = Softmax(Tanh(M1 M2^T + M2 M1^T))
-        # We need to handle batch dimension
-        # m1: (B, N, H), m2: (B, N, H)
-        # m1 @ m2.T -> (B, N, N)
         
-        adj = torch.matmul(m1, m2.transpose(1, 2)) + torch.matmul(m2, m1.transpose(1, 2))
-        adj = torch.tanh(adj)
-        adj = F.softmax(adj, dim=-1)
+        adj_scores = torch.matmul(m1, m2.transpose(1, 2)) + torch.matmul(m2, m1.transpose(1, 2))
+        adj_scores = torch.tanh(adj_scores)
+        adj = F.softmax(adj_scores / self.temperature, dim=-1)
         return adj
 
 class DilatedCausalConv(nn.Module):
@@ -36,6 +34,10 @@ class DilatedCausalConv(nn.Module):
         self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size, dilation=dilation)
         self.conv2 = nn.Conv1d(in_channels, out_channels, kernel_size, dilation=dilation)
         
+        # 1x1 conv for residual if channels change
+        self.residual_conv = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
+        self.dropout = nn.Dropout(0.2)
+
     def forward(self, x):
         # x: (Batch, Channels, Seq_Len)
         # Pad to keep length same (causal)
@@ -44,13 +46,22 @@ class DilatedCausalConv(nn.Module):
         filter = torch.tanh(self.conv1(x_pad))
         gate = torch.sigmoid(self.conv2(x_pad))
         
-        return filter * gate
+        out = filter * gate
+        out = self.dropout(out)
+        
+        if self.residual_conv is not None:
+            res = self.residual_conv(x)
+        else:
+            res = x
+            
+        return out + res
 
 class APPNP(nn.Module):
-    def __init__(self, k=10, alpha=0.1):
+    def __init__(self, k=5, alpha=0.2, dropout=0.2):
         super(APPNP, self).__init__()
         self.k = k
         self.alpha = alpha
+        self.dropout = dropout
 
     def forward(self, x, adj):
         # x: (Batch, Num_Nodes, Features)
@@ -80,6 +91,7 @@ class APPNP(nn.Module):
         for _ in range(self.k):
             # Z = alpha * x + (1-alpha) * A * Z
             z = self.alpha * x + (1 - self.alpha) * torch.matmul(norm_adj, z)
+            z = F.dropout(z, p=self.dropout, training=self.training)
             # Paper says ReLU at the end?
             # Eq 188: Z^H = ReLU(...)
             # Intermediate steps: Eq 185 doesn't have ReLU.
@@ -87,52 +99,72 @@ class APPNP(nn.Module):
         return F.relu(z)
 
 class DDGNN(nn.Module):
-    def __init__(self, num_nodes, input_dim, hidden_dim, output_dim, seq_len, kernel_size=3, dilation_channels=32):
+    def __init__(self, num_nodes, input_dim, hidden_dim, output_dim, seq_len, kernel_size=3, dilation_channels=32, node_emb_dim=10):
         super(DDGNN, self).__init__()
         self.num_nodes = num_nodes
         self.input_dim = input_dim
         self.seq_len = seq_len
+        self.decay_lambda = 0.5
+        
+        # Node Identity Embedding
+        self.node_emb = nn.Parameter(torch.randn(num_nodes, node_emb_dim))
+        
+        # Update input dim for internal layers
+        self.combined_input_dim = input_dim + node_emb_dim
         
         # Demand Dependency Learning
-        self.ddl = DemandDependencyLearning(input_dim, hidden_dim, num_nodes)
+        self.ddl = DemandDependencyLearning(self.combined_input_dim, hidden_dim, num_nodes)
         
         # Dilated Causal Conv
         # Input to conv is (Batch, Input_Dim, Seq_Len) for each node?
         # Or do we treat nodes as channels?
         # Usually in ST-GNN, we process (B, N, C, T).
         # We can reshape to (B*N, C, T).
-        self.tcn = DilatedCausalConv(input_dim, dilation_channels, kernel_size=kernel_size, dilation=1)
+        
         # Stack more layers if needed, but paper mentions one layer or doesn't specify depth.
         # "increasing the layer depth"
         # Let's add a few layers with increasing dilation.
         self.tcn_layers = nn.ModuleList([
-            DilatedCausalConv(input_dim, dilation_channels, kernel_size, dilation=1),
+            DilatedCausalConv(self.combined_input_dim, dilation_channels, kernel_size, dilation=1),
             DilatedCausalConv(dilation_channels, dilation_channels, kernel_size, dilation=2),
             DilatedCausalConv(dilation_channels, dilation_channels, kernel_size, dilation=4)
         ])
         
         # APPNP
-        self.appnp = APPNP(k=10, alpha=0.1)
+        self.appnp = APPNP(k=5, alpha=0.2, dropout=0.2)
         
-        # Output layer
-        self.fc_out = nn.Linear(dilation_channels, output_dim)
+        # Output head
+        self.head = nn.Sequential(
+            nn.Linear(dilation_channels, dilation_channels),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(dilation_channels, output_dim)
+        )
 
     def forward(self, x):
         # x: (Batch, Seq_Len, Num_Nodes, Input_Dim)
         batch_size, seq_len, num_nodes, input_dim = x.shape
         
+        # Add Node Embeddings
+        # node_emb: (Num_Nodes, Emb_Dim) -> (1, 1, Num_Nodes, Emb_Dim) -> (B, T, N, Emb_Dim)
+        node_emb = self.node_emb.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, num_nodes, -1)
+        x_combined = torch.cat([x, node_emb], dim=-1) # (B, T, N, Input+Emb)
+        
         # 1. Demand Dependency Learning
-        # We use the features at the last time step to learn A?
-        # Or average over time?
-        # Paper says "from historical task data C^t at time instance t".
-        # It seems A is dynamic per time step.
-        # But if we predict the NEXT step, we might want to use the most recent info.
-        # Let's use the last time step x[:, -1, :, :]
-        adj = self.ddl(x[:, -1, :, :]) # (B, N, N)
+        # Weighted temporal aggregation for adjacency (emphasize recent steps)
+        with torch.no_grad():
+            steps = torch.arange(seq_len, device=x.device)
+            weights = torch.exp(-self.decay_lambda * (seq_len - 1 - steps)).view(1, seq_len, 1, 1)
+            weights = weights / weights.sum()
+        
+        # Use combined features for DDL to include node identity
+        x_adj = (x_combined * weights).sum(dim=1)  # (B, N, C_combined)
+        adj = self.ddl(x_adj) # (B, N, N)
         
         # 2. TCN
         # Reshape to (B*N, Input_Dim, Seq_Len)
-        x_tcn = x.permute(0, 2, 3, 1).reshape(batch_size * num_nodes, input_dim, seq_len)
+        # Permute: (B, T, N, C) -> (B, N, C, T) -> (B*N, C, T)
+        x_tcn = x_combined.permute(0, 2, 3, 1).reshape(batch_size * num_nodes, self.combined_input_dim, seq_len)
         
         skip = 0
         for layer in self.tcn_layers:
@@ -144,8 +176,9 @@ class DDGNN(nn.Module):
         
         # 3. APPNP
         z = self.appnp(x_tcn, adj) # (B, N, Channels)
+        z = z + x_tcn  # residual fusion to keep local temporal features
         
         # 4. Output
-        out = self.fc_out(z) # (B, N, Output_Dim)
+        out = self.head(z) # (B, N, Output_Dim)
         
         return out, adj

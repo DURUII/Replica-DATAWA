@@ -3,12 +3,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class LSTMModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers=2):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers=2, dropout=0.3):
         super(LSTMModel, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.output_dim = output_dim
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
+        self.dropout = nn.Dropout(dropout)
+        self.fc1 = nn.Linear(hidden_dim, hidden_dim)
+        self.act = nn.ReLU()
         self.fc = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
@@ -21,10 +24,13 @@ class LSTMModel(nn.Module):
         out, _ = self.lstm(x)
         
         # Take last time step
-        out = out[:, -1, :] # (Batch * Num_Nodes, Hidden)
+        out = out[:, -1, :]
         
         # FC
-        out = self.fc(out) # (Batch * Num_Nodes, Output)
+        out = self.dropout(out)
+        out = self.fc1(out)
+        out = self.act(out)
+        out = self.fc(out)
         
         # Reshape back
         out = out.reshape(batch_size, num_nodes, self.output_dim)
@@ -137,10 +143,9 @@ class GraphWaveNet(nn.Module):
 
         x = F.relu(skip)
         x = F.relu(self.end_conv_1(x))
-        x = self.end_conv_2(x) # (Batch, Out_Dim, Num_Nodes, 1)
-        
-        # Reshape to (Batch, Num_Nodes, Out_Dim)
-        x = x.squeeze(-1).permute(0, 2, 1)
+        x = self.end_conv_2(x)
+        x = x[..., -1]
+        x = x.permute(0, 2, 1)
         
         return x, adp
 
