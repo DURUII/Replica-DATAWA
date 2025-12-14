@@ -32,69 +32,69 @@ class Preprocessor:
         
         print(f"Filtering data from {start_ts} to {end_ts}")
         
-        filtered_requests = [r for r in requests if start_ts <= r['appearance_time'] < end_ts]
+        filtered_requests = [r for r in requests if start_ts <= r['appearance_time'] <= end_ts]
         print(f"Filtered requests: {len(filtered_requests)} out of {len(requests)}")
         
-        filtered_workers = [w for w in workers if start_ts <= w['appearance_time'] < end_ts]
+        filtered_workers = [w for w in workers if start_ts <= w['appearance_time'] <= end_ts]
         print(f"Filtered workers: {len(filtered_workers)} out of {len(workers)}")
 
-        # Define bounds using filtered requests only
-        if len(filtered_requests) == 0:
-            lats = [r['lat_app'] for r in requests]
-            lngs = [r['lng_app'] for r in requests]
-        else:
-            lats = [r['lat_app'] for r in filtered_requests]
-            lngs = [r['lng_app'] for r in filtered_requests]
-        min_lat, max_lat = min(lats), max(lats)
-        min_lng, max_lng = min(lngs), max(lngs)
-        lat_steps = max(1, int(np.ceil((max_lat - min_lat) / self.grid_size)))
-        lng_steps = max(1, int(np.ceil((max_lng - min_lng) / self.grid_size)))
+        # Define global bounds using all requests and workers (fixed grid graph)
+        req_lats = [r['lat_app'] for r in requests]
+        req_lngs = [r['lng_app'] for r in requests]
+        wrk_lats = [w['lat'] for w in workers]
+        wrk_lngs = [w['lng'] for w in workers]
+        all_lats = req_lats + wrk_lats
+        all_lngs = req_lngs + wrk_lngs
+        min_lat, max_lat = min(all_lats), max(all_lats)
+        min_lng, max_lng = min(all_lngs), max(all_lngs)
+        lat_steps = max(1, int(np.ceil((max_lat - min_lat) / self.grid_size)) + 1)
+        lng_steps = max(1, int(np.ceil((max_lng - min_lng) / self.grid_size)) + 1)
         num_grids = lat_steps * lng_steps
         print(f"Grid: {lat_steps}x{lng_steps} = {num_grids} cells")
 
         # Create time series
         # Total duration
         duration = end_ts - start_ts
-        num_vectors = int(duration / (self.k * self.delta_t))
+        num_vectors = int(np.ceil(duration / (self.k * self.delta_t)))
         
         # Matrix C: (Num_Vectors, Num_Grids, k)
-        C = np.zeros((num_vectors, num_grids, self.k), dtype=int)
+        C_count = np.zeros((num_vectors, num_grids, self.k), dtype=int)
         # Matrix S: (Num_Vectors, Num_Grids, k) - Supply
         S = np.zeros((num_vectors, num_grids, self.k), dtype=int)
         
         for r in filtered_requests:
             t = r['appearance_time'] - start_ts
-            if t < 0 or t >= duration:
+            if t < 0 or t > duration:
                 continue
             
             # Find vector index
             # Each vector covers k * delta_t
             vec_idx = int(t / (self.k * self.delta_t))
-            if vec_idx >= num_vectors:
-                continue
+            vec_idx = min(vec_idx, num_vectors - 1)
                 
             # Find dimension index within vector
             # t % (k * delta_t) gives time within the vector
             # dim_idx = int((t % (k * delta_t)) / delta_t)
             time_in_vec = t - vec_idx * (self.k * self.delta_t)
+            time_in_vec = min(time_in_vec, self.k * self.delta_t - 1e-6)
             dim_idx = int(time_in_vec / self.delta_t)
             
             # Find grid index
             lat_idx, lng_idx = self.get_grid_index(r['lat_app'], r['lng_app'], min_lat, min_lng, lat_steps, lng_steps)
             grid_idx = lat_idx * lng_steps + lng_idx
             
-            C[vec_idx, grid_idx, dim_idx] = 1
+            C_count[vec_idx, grid_idx, dim_idx] += 1
 
         for w in filtered_workers:
             t = w['appearance_time'] - start_ts
-            if t < 0 or t >= duration:
+            if t < 0 or t > duration:
                 continue
                 
             vec_idx = int(t / (self.k * self.delta_t))
-            if vec_idx >= num_vectors:
-                continue
+            vec_idx = min(vec_idx, num_vectors - 1)
                 
             time_in_vec = t - vec_idx * (self.k * self.delta_t)
+            time_in_vec = min(time_in_vec, self.k * self.delta_t - 1e-6)
             dim_idx = int(time_in_vec / self.delta_t)
             
             lat_idx, lng_idx = self.get_grid_index(w['lat'], w['lng'], min_lat, min_lng, lat_steps, lng_steps)
@@ -102,20 +102,39 @@ class Preprocessor:
             
             S[vec_idx, grid_idx, dim_idx] += 1
 
+        C = (C_count > 0).astype(int)
+
+        # Spatial adjacency mask (4-neighborhood)
+        adj_mask = np.zeros((num_grids, num_grids), dtype=int)
+        for i in range(lat_steps):
+            for j in range(lng_steps):
+                idx = i * lng_steps + j
+                if i > 0:
+                    adj_mask[idx, (i - 1) * lng_steps + j] = 1
+                if i < lat_steps - 1:
+                    adj_mask[idx, (i + 1) * lng_steps + j] = 1
+                if j > 0:
+                    adj_mask[idx, i * lng_steps + (j - 1)] = 1
+                if j < lng_steps - 1:
+                    adj_mask[idx, i * lng_steps + (j + 1)] = 1
+
         return {
             'C': C,
+            'C_count': C_count,
             'S': S,
             'min_lat': min_lat,
             'min_lng': min_lng,
             'lat_steps': lat_steps,
             'lng_steps': lng_steps,
+            'grid_shape': (lat_steps, lng_steps),
             'grid_size': self.grid_size,
             'delta_t': self.delta_t,
             'k': self.k,
             'start_ts': start_ts,
             'end_ts': end_ts,
             'workers': workers, # Save all workers (they have appearance time)
-            'requests': filtered_requests
+            'requests': filtered_requests,
+            'adj_mask': adj_mask
         }
 
 if __name__ == "__main__":
