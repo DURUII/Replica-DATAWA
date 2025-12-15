@@ -413,7 +413,7 @@ def run_experiments():
             
             # Preprocess
             logging.info("Preprocessing data...")
-            preprocessor = Preprocessor(data_dir, grid_size=0.02, delta_t=delta_t)
+            preprocessor = Preprocessor(data_dir, grid_size_m=1000, delta_t=delta_t)
             
             data_dict = preprocessor.process(dataset_info['worker'], dataset_info['request'], dataset_info['start_hour'], dataset_info['end_hour'], dataset_info['date'])
             C = data_dict['C']
@@ -503,16 +503,9 @@ def run_experiments():
             X_test = X_test_full
             
             train_dataset = TensorDataset(X_train, Y_train)
+            val_dataset = TensorDataset(X_val, Y_val)
+            test_dataset = TensorDataset(X_test, Y_test)
             gen = torch.Generator(); gen.manual_seed(SEED)
-            if use_strict_loss:
-                train_loader = DataLoader(train_dataset, batch_size=CONFIG['batch_size'], shuffle=True, generator=gen)
-            else:
-                sample_pos = (Y_train.sum(dim=(1,2)) > 0).float()
-                weights = torch.where(sample_pos > 0, torch.tensor(3.0), torch.tensor(1.0))
-                sampler = torch.utils.data.WeightedRandomSampler(weights, num_samples=len(weights), replacement=True, generator=gen)
-                train_loader = DataLoader(train_dataset, batch_size=CONFIG['batch_size'], sampler=sampler, generator=gen)
-            val_loader = DataLoader(TensorDataset(X_val, Y_val), batch_size=CONFIG['batch_size'], shuffle=False, generator=gen)
-            test_loader = DataLoader(TensorDataset(X_test, Y_test), batch_size=CONFIG['batch_size'], shuffle=False, generator=gen)
             
             num_nodes = data.shape[1]
             input_dim = data.shape[2] # k
@@ -534,8 +527,28 @@ def run_experiments():
                 
                 tag_prefix = f"{dataset_name}/dT{delta_t}"
                 
-                train_time = train_model(model, train_loader, val_loader, criterion, optimizer, device, writer, tag_prefix, model_name, CONFIG)
-                ap, test_time, preds, targets, inputs = evaluate_model(model, test_loader, device)
+                bs = CONFIG['batch_size']
+                while True:
+                    try:
+                        if use_strict_loss:
+                            train_loader = DataLoader(train_dataset, batch_size=bs, shuffle=True, generator=gen)
+                        else:
+                            sample_pos = (Y_train.sum(dim=(1,2)) > 0).float()
+                            weights = torch.where(sample_pos > 0, torch.tensor(3.0), torch.tensor(1.0))
+                            sampler = torch.utils.data.WeightedRandomSampler(weights, num_samples=len(weights), replacement=True, generator=gen)
+                            train_loader = DataLoader(train_dataset, batch_size=bs, sampler=sampler, generator=gen)
+                        val_loader = DataLoader(val_dataset, batch_size=bs, shuffle=False, generator=gen)
+                        test_loader = DataLoader(test_dataset, batch_size=bs, shuffle=False, generator=gen)
+                        train_time = train_model(model, train_loader, val_loader, criterion, optimizer, device, writer, tag_prefix, model_name, CONFIG)
+                        ap, test_time, preds, targets, inputs = evaluate_model(model, test_loader, device)
+                        break
+                    except torch.cuda.OutOfMemoryError:
+                        torch.cuda.empty_cache()
+                        new_bs = max(1, bs // 2)
+                        if new_bs == bs:
+                            raise
+                        bs = new_bs
+                        logging.warning(f"OOM encountered, reducing batch size to {bs}")
                 if os.getenv('STRICT_AP') == '1':
                     # Macro AP over nodes
                     preds_np = preds

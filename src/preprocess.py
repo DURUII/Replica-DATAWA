@@ -3,18 +3,29 @@ import pickle
 import os
 from data_loader import DataLoader
 import datetime
+import math
 
 class Preprocessor:
-    def __init__(self, data_dir, grid_size=0.005, delta_t=5, k=3):
+    def __init__(self, data_dir, grid_size=0.005, delta_t=5, k=3, grid_size_m=None):
         self.data_dir = data_dir
         self.grid_size = grid_size
+        self.grid_size_m = grid_size_m
         self.delta_t = delta_t
         self.k = k
         self.loader = DataLoader(data_dir)
+        self.use_projection = False
+        self.transformer = None
+        self.min_x = None
+        self.min_y = None
 
     def get_grid_index(self, lat, lng, min_lat, min_lng, lat_steps, lng_steps):
-        lat_idx = int((lat - min_lat) / self.grid_size)
-        lng_idx = int((lng - min_lng) / self.grid_size)
+        if self.use_projection and self.transformer is not None and self.min_x is not None and self.min_y is not None:
+            x, y = self.transformer.transform(lng, lat)
+            lat_idx = int((y - self.min_y) / self.grid_size_m)
+            lng_idx = int((x - self.min_x) / self.grid_size_m)
+        else:
+            lat_idx = int((lat - min_lat) / self.grid_size_lat_deg)
+            lng_idx = int((lng - min_lng) / self.grid_size_lng_deg)
         lat_idx = max(0, min(lat_idx, lat_steps - 1))
         lng_idx = max(0, min(lng_idx, lng_steps - 1))
         return lat_idx, lng_idx
@@ -47,8 +58,46 @@ class Preprocessor:
         all_lngs = req_lngs + wrk_lngs
         min_lat, max_lat = min(all_lats), max(all_lats)
         min_lng, max_lng = min(all_lngs), max(all_lngs)
-        lat_steps = max(1, int(np.ceil((max_lat - min_lat) / self.grid_size)) + 1)
-        lng_steps = max(1, int(np.ceil((max_lng - min_lng) / self.grid_size)) + 1)
+        projection_epsg = None
+        if self.grid_size_m is not None:
+            try:
+                from pyproj import Transformer
+                center_lat = (min_lat + max_lat) / 2.0
+                center_lng = (min_lng + max_lng) / 2.0
+                zone = int(math.floor((center_lng + 180) / 6) + 1)
+                north = center_lat >= 0
+                projection_epsg = (32600 + zone) if north else (32700 + zone)
+                self.transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{projection_epsg}", always_xy=True)
+                xs = []
+                ys = []
+                for la, lo in zip(all_lats, all_lngs):
+                    x, y = self.transformer.transform(lo, la)
+                    xs.append(x); ys.append(y)
+                min_x, max_x = float(np.min(xs)), float(np.max(xs))
+                min_y, max_y = float(np.min(ys)), float(np.max(ys))
+                self.min_x, self.min_y = min_x, min_y
+                self.use_projection = True
+                lat_steps = max(1, int(np.ceil((max_y - min_y) / self.grid_size_m)) + 1)
+                lng_steps = max(1, int(np.ceil((max_x - min_x) / self.grid_size_m)) + 1)
+                meters_per_deg_lat = 111000.0
+                meters_per_deg_lng = 111000.0 * np.cos(np.deg2rad(center_lat))
+                self.grid_size_lat_deg = self.grid_size_m / meters_per_deg_lat
+                self.grid_size_lng_deg = self.grid_size_m / meters_per_deg_lng
+            except Exception:
+                self.use_projection = False
+                self.transformer = None
+                lat_center = (min_lat + max_lat) / 2.0
+                meters_per_deg_lat = 111000.0
+                meters_per_deg_lng = 111000.0 * np.cos(np.deg2rad(lat_center))
+                self.grid_size_lat_deg = self.grid_size_m / meters_per_deg_lat
+                self.grid_size_lng_deg = self.grid_size_m / meters_per_deg_lng
+                lat_steps = max(1, int(np.ceil((max_lat - min_lat) / self.grid_size_lat_deg)) + 1)
+                lng_steps = max(1, int(np.ceil((max_lng - min_lng) / self.grid_size_lng_deg)) + 1)
+        else:
+            self.grid_size_lat_deg = self.grid_size
+            self.grid_size_lng_deg = self.grid_size
+            lat_steps = max(1, int(np.ceil((max_lat - min_lat) / self.grid_size_lat_deg)) + 1)
+            lng_steps = max(1, int(np.ceil((max_lng - min_lng) / self.grid_size_lng_deg)) + 1)
         num_grids = lat_steps * lng_steps
         print(f"Grid: {lat_steps}x{lng_steps} = {num_grids} cells")
 
@@ -124,10 +173,16 @@ class Preprocessor:
             'S': S,
             'min_lat': min_lat,
             'min_lng': min_lng,
+            'min_x': self.min_x,
+            'min_y': self.min_y,
             'lat_steps': lat_steps,
             'lng_steps': lng_steps,
             'grid_shape': (lat_steps, lng_steps),
-            'grid_size': self.grid_size,
+            'grid_size': self.grid_size_m if self.grid_size_m is not None else self.grid_size,
+            'grid_size_lat_deg': self.grid_size_lat_deg,
+            'grid_size_lng_deg': self.grid_size_lng_deg,
+            'cell_size_m': self.grid_size_m if self.grid_size_m is not None else None,
+            'projection_epsg': projection_epsg,
             'delta_t': self.delta_t,
             'k': self.k,
             'start_ts': start_ts,
