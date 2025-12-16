@@ -81,3 +81,11 @@ This project is a replication of the paper "DATA-WA: Demand-based Adaptive Task 
     python src/simulation.py
     ```
     Runs the adaptive task assignment simulation. You can modify the `method` in `src/simulation.py` to switch between `'greedy'` and `'dta'`.
+
+# Discoveries
+
+1.  **Grid Size Impact**:
+    * The grid size has a significant impact on the model's ability to capture spatial dependencies. A smaller grid size (e.g., 1km x 1km) allows the model to learn more fine-grained patterns but requires more data. 
+2. Traing Details:
+   * Focal Loss + WeightedSampler may help balance the class imbalance in the training data. 
+3. 

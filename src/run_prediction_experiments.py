@@ -10,6 +10,8 @@ import time
 import json
 import os
 import logging
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
@@ -45,7 +47,7 @@ CONFIG = {
     'epochs': 120,
     'patience': 12,
     'batch_size': 64,
-    'learning_rate': 0.01,
+    'learning_rate': 0.001,
     'seq_len': 60,
     'train_split': 0.8, # Increase train split to ~19.2h (for 24h data)
     'val_split': 0.05,  # ~1.2h
@@ -66,17 +68,21 @@ def create_dataset(data, seq_len):
     return torch.FloatTensor(np.array(X)), torch.FloatTensor(np.array(Y))
 
 class FocalBCEWithLogitsLoss(nn.Module):
-    def __init__(self, alpha=1.0, gamma=2.0, pos_weight=None):
+    def __init__(self, alpha=1.0, gamma=2.0, pos_weight=None, node_weights=None):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
         self.pos_weight = pos_weight
+        self.node_weights = node_weights
 
     def forward(self, logits, targets):
         bce = F.binary_cross_entropy_with_logits(logits, targets, pos_weight=self.pos_weight, reduction='none')
         probs = torch.sigmoid(logits)
         pt = probs * targets + (1 - probs) * (1 - targets)
         loss = self.alpha * (1 - pt) ** self.gamma * bce
+        if self.node_weights is not None:
+            w = self.node_weights.view(1, -1, 1).to(logits.device)
+            loss = loss * w
         return loss.mean()
 def train_model(model, train_loader, val_loader, criterion, optimizer, device, writer, tag_prefix, model_name_only, config):
     model.train()
@@ -413,12 +419,21 @@ def run_experiments():
             
             # Preprocess
             logging.info("Preprocessing data...")
-            preprocessor = Preprocessor(data_dir, grid_size_m=1000, delta_t=delta_t)
+            # Check for GRID settings
+            grid_mode = os.getenv('GRID_MODE', '1km') # '1km' or '0.02deg'
+            if grid_mode == '0.02deg':
+                logging.info("Using 0.02 degree grid (Coarse)")
+                preprocessor = Preprocessor(data_dir, grid_size=0.02, grid_size_m=None, delta_t=delta_t)
+            else:
+                logging.info("Using 1km grid (Fine)")
+                preprocessor = Preprocessor(data_dir, grid_size_m=1000, delta_t=delta_t)
             
             data_dict = preprocessor.process(dataset_info['worker'], dataset_info['request'], dataset_info['start_hour'], dataset_info['end_hour'], dataset_info['date'])
             C = data_dict['C']
             # S = data_dict['S'] # Not used
             grid_shape = data_dict['grid_shape']
+            adj_mask = data_dict['adj_mask']
+            adj_tensor = torch.FloatTensor(adj_mask).to(device)
             
             # Use only Demand (C) as per paper
             # C: (T, N, k) -> data: (T, N, k)
@@ -485,6 +500,11 @@ def run_experiments():
                 pos_weight_val = min(pos_weight_val, 50.0)
                 pos_weight = torch.tensor([pos_weight_val]).to(device)
                 logging.info(f"Positive Rate: {num_pos/train_demand.size:.6f}, Positive Weight: {pos_weight_val:.2f}")
+            node_activity = train_demand.sum(axis=(0,2))
+            node_activity_mean = float(np.mean(node_activity)) if node_activity.size > 0 else 1.0
+            node_weights_np = node_activity / (node_activity_mean + 1e-5)
+            node_weights_np = np.clip(node_weights_np, 0.2, 5.0)
+            node_weights = torch.tensor(node_weights_np, dtype=torch.float32).to(device)
             
             
             # Create Datasets (Input: D+S, Output: D)
@@ -513,8 +533,8 @@ def run_experiments():
             
             models = {
                 'LSTM': LSTMModel(input_dim, 256, output_dim, num_layers=2).to(device),
-                'GraphWaveNet': GraphWaveNet(num_nodes, input_dim, in_dim=input_dim, out_dim=output_dim).to(device),
-                'DDGNN': DDGNN(num_nodes, input_dim, 128, output_dim, seq_len).to(device)
+                'GraphWaveNet': GraphWaveNet(num_nodes, input_dim, in_dim=input_dim, out_dim=output_dim, device=device, supports=[adj_tensor], blocks=5, layers=3).to(device),
+                'DDGNN': DDGNN(num_nodes, input_dim, 128, output_dim, seq_len, adj_prior=adj_tensor, tcn_depth=6, appnp_k=8).to(device)
             }
             
             results[dataset_name][delta_t] = {}
@@ -522,7 +542,7 @@ def run_experiments():
             for model_name, model in models.items():
                 logging.info(f"Training {model_name}...")
                 criterion = (nn.BCEWithLogitsLoss() if use_strict_loss
-                             else FocalBCEWithLogitsLoss(alpha=1.0, gamma=2.0, pos_weight=pos_weight))
+                             else FocalBCEWithLogitsLoss(alpha=1.0, gamma=2.0, pos_weight=pos_weight, node_weights=node_weights))
                 optimizer = optim.AdamW(model.parameters(), lr=CONFIG['learning_rate'], weight_decay=1e-5)
                 
                 tag_prefix = f"{dataset_name}/dT{delta_t}"
@@ -534,7 +554,7 @@ def run_experiments():
                             train_loader = DataLoader(train_dataset, batch_size=bs, shuffle=True, generator=gen)
                         else:
                             sample_pos = (Y_train.sum(dim=(1,2)) > 0).float()
-                            weights = torch.where(sample_pos > 0, torch.tensor(3.0), torch.tensor(1.0))
+                            weights = torch.where(sample_pos > 0, torch.tensor(5.0), torch.tensor(1.0))
                             sampler = torch.utils.data.WeightedRandomSampler(weights, num_samples=len(weights), replacement=True, generator=gen)
                             train_loader = DataLoader(train_dataset, batch_size=bs, sampler=sampler, generator=gen)
                         val_loader = DataLoader(val_dataset, batch_size=bs, shuffle=False, generator=gen)
@@ -571,6 +591,15 @@ def run_experiments():
                 writer.add_scalar(f'{tag_prefix}/Time/Train/{model_name}', train_time, 0)
                 writer.add_scalar(f'{tag_prefix}/Time/Test/{model_name}', test_time, 0)
                 
+                # Save Raw Predictions for Visualization App
+                raw_save_dir = f'results/raw_preds/{dataset_name}_dT{delta_t}/{model_name}'
+                os.makedirs(raw_save_dir, exist_ok=True)
+                np.save(f'{raw_save_dir}/preds.npy', preds)
+                np.save(f'{raw_save_dir}/targets.npy', targets)
+                # Save inputs if needed, but they can be large
+                # np.save(f'{raw_save_dir}/inputs.npy', inputs)
+                logging.info(f"Saved raw predictions to {raw_save_dir}")
+
                 # Visualize bad cases
                 visualize_cases(model_name, inputs, preds, targets, grid_shape, dataset_name, delta_t)
                 

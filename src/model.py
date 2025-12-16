@@ -99,12 +99,14 @@ class APPNP(nn.Module):
         return F.relu(z)
 
 class DDGNN(nn.Module):
-    def __init__(self, num_nodes, input_dim, hidden_dim, output_dim, seq_len, kernel_size=3, dilation_channels=32, node_emb_dim=10):
+    def __init__(self, num_nodes, input_dim, hidden_dim, output_dim, seq_len, kernel_size=3, dilation_channels=32, node_emb_dim=10, adj_prior=None, tcn_depth=6, appnp_k=8):
         super(DDGNN, self).__init__()
         self.num_nodes = num_nodes
         self.input_dim = input_dim
         self.seq_len = seq_len
         self.decay_lambda = 0.5
+        self.adj_prior = adj_prior
+        self.tcn_depth = tcn_depth
         
         # Node Identity Embedding
         self.node_emb = nn.Parameter(torch.randn(num_nodes, node_emb_dim))
@@ -124,14 +126,15 @@ class DDGNN(nn.Module):
         # Stack more layers if needed, but paper mentions one layer or doesn't specify depth.
         # "increasing the layer depth"
         # Let's add a few layers with increasing dilation.
-        self.tcn_layers = nn.ModuleList([
-            DilatedCausalConv(self.combined_input_dim, dilation_channels, kernel_size, dilation=1),
-            DilatedCausalConv(dilation_channels, dilation_channels, kernel_size, dilation=2),
-            DilatedCausalConv(dilation_channels, dilation_channels, kernel_size, dilation=4)
-        ])
+        layers = []
+        d = 1
+        for i in range(self.tcn_depth):
+            in_ch = self.combined_input_dim if i == 0 else dilation_channels
+            layers.append(DilatedCausalConv(in_ch, dilation_channels, kernel_size, dilation=d))
+            d = d * 2
+        self.tcn_layers = nn.ModuleList(layers)
         
-        # APPNP
-        self.appnp = APPNP(k=5, alpha=0.2, dropout=0.2)
+        self.appnp = APPNP(k=appnp_k, alpha=0.2, dropout=0.2)
         
         # Output head
         self.head = nn.Sequential(
@@ -160,6 +163,11 @@ class DDGNN(nn.Module):
         # Use combined features for DDL to include node identity
         x_adj = (x_combined * weights).sum(dim=1)  # (B, N, C_combined)
         adj = self.ddl(x_adj) # (B, N, N)
+        if self.adj_prior is not None:
+            ap = self.adj_prior.to(adj.device)
+            ap = ap.unsqueeze(0).expand(batch_size, -1, -1)
+            adj = 0.5 * adj + 0.5 * ap
+            adj = adj / adj.sum(dim=-1, keepdim=True).clamp(min=1e-6)
         
         # 2. TCN
         # Reshape to (B*N, Input_Dim, Seq_Len)
